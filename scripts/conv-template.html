@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>곳간 코드 컨벤션</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+:root{
+  --bg:#ffffff;--fg:#141414;--sub:#5c5850;--line:#d6d2c8;--line2:#ebe8e1;--panel:#f6f4ef;--panel2:#ece8df;
+  --point:#ff5a1f;--code:#f3f1ec;--muted:#8e897f;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#151413;--fg:#ece9e3;--sub:#aaa497;--line:#3b3833;--line2:#2a2825;--panel:#1d1c1a;--panel2:#26241f;
+    --point:#ff7a45;--code:#22201d;--muted:#7d786e;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151413;--fg:#ece9e3;--sub:#aaa497;--line:#3b3833;--line2:#2a2825;--panel:#1d1c1a;--panel2:#26241f;
+  --point:#ff7a45;--code:#22201d;--muted:#7d786e;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:Pretendard,-apple-system,"Malgun Gothic",sans-serif;font-size:15px;line-height:1.65;word-break:keep-all;overflow-wrap:break-word}
+a{color:inherit}
+code,.mono{font-family:"IBM Plex Mono",Consolas,"D2Coding",monospace;font-size:.88em}
+p code,li code,td code{background:var(--code);padding:0 4px;overflow-wrap:anywhere}
+.wrap{display:grid;grid-template-columns:240px minmax(0,1fr);max-width:1360px;margin:0 auto}
+nav.toc{position:sticky;top:0;height:100vh;overflow-y:auto;border-right:1px solid var(--line);padding:24px 16px 40px 20px;font-size:13.5px}
+.toc .brand{font-weight:800;font-size:16px;letter-spacing:-.01em}
+.toc .brand span{color:var(--point)}
+.toc .sub{color:var(--sub);font-size:12.5px;margin:2px 0 16px}
+.toc ol{list-style:none;margin:0;padding:0}
+.toc li a{display:block;padding:3px 0 3px 8px;text-decoration:none;border-left:2px solid transparent;color:var(--fg)}
+.toc li a:hover{border-left-color:var(--point)}
+.toc li.l2 a{padding-left:20px;color:var(--sub);font-size:13px}
+.toc .num{display:inline-block;min-width:24px;font-family:"IBM Plex Mono",monospace;color:var(--muted);font-size:12px}
+main{padding:32px 44px 120px;min-width:0}
+header.doc{border-bottom:2px solid var(--fg);padding-bottom:18px}
+header.doc .kicker{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.08em;color:var(--sub)}
+header.doc h1{font-size:28px;line-height:1.3;margin:6px 0 10px;letter-spacing:-.02em}
+.meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);margin-top:14px}
+.meta div{padding:8px 12px;border-right:1px solid var(--line);font-size:13px}
+.meta div:last-child{border-right:0}
+.meta b{display:block;font-size:11.5px;color:var(--sub);font-weight:600}
+section{padding-top:8px}
+h2{font-size:22px;margin:44px 0 4px;padding-bottom:6px;border-bottom:1px solid var(--fg);letter-spacing:-.01em}
+h2 .n{font-family:"IBM Plex Mono",monospace;color:var(--point);margin-right:10px;font-size:18px}
+h3{font-size:17px;margin:30px 0 8px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+h3 .n{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--sub)}
+h4{font-size:15px;margin:20px 0 6px}
+.lead{color:var(--sub);margin:6px 0 10px}
+ul.b{margin:6px 0 10px;padding-left:18px}
+ul.b li{margin:2px 0}
+ul.b li::marker{color:var(--muted)}
+.tbl{overflow-x:auto;border:1px solid var(--line);margin:10px 0 14px}
+table{border-collapse:collapse;width:100%;font-size:13.8px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line2);text-align:left;vertical-align:top}
+th{background:var(--panel);font-weight:700;font-size:12.8px;white-space:nowrap;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+td ul{margin:0;padding-left:16px}
+td li{margin:1px 0}
+td.id{font-family:"IBM Plex Mono",monospace;font-size:12.5px;white-space:nowrap;color:var(--sub)}
+td.ref{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--sub);min-width:150px}
+.req td:nth-child(2){min-width:160px}
+.req td:nth-child(2) b{display:block}
+.tag{display:inline-block;font-size:11px;line-height:1.5;padding:0 5px;border:1px solid var(--line);color:var(--sub);margin:2px 3px 0 0;white-space:nowrap}
+.p{display:inline-block;min-width:44px;text-align:center;font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:600;padding:1px 6px;white-space:nowrap}
+.p0{background:var(--fg);color:var(--bg)}
+.p1{border:1px solid var(--fg)}
+.p2{border:1px dashed var(--muted);color:var(--sub)}
+.px{color:var(--muted);text-decoration:line-through}
+.note{border-left:3px solid var(--point);background:var(--panel);padding:8px 12px;margin:12px 0;font-size:14px}
+.note b{margin-right:4px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:10px 0}
+.grid3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.box{border:1px solid var(--line);padding:10px 14px}
+.box h4{margin:2px 0 6px;font-size:14px}
+.box ul.b{margin:0}
+pre{background:var(--code);border:1px solid var(--line);padding:12px 14px;overflow-x:auto;font-size:12.8px;line-height:1.55;margin:8px 0 14px}
+pre code{font-size:inherit;background:none;padding:0}
+.filter{position:sticky;top:0;z-index:3;background:var(--bg);border-bottom:1px solid var(--line);padding:8px 0;margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:13px}
+.filter button{font:inherit;font-size:12.5px;background:var(--bg);color:var(--fg);border:1px solid var(--line);padding:3px 10px;cursor:pointer}
+.filter button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.filter .cnt{color:var(--sub);margin-left:auto}
+.dom-head{display:grid;grid-template-columns:110px minmax(0,1fr);border:1px solid var(--line);margin:8px 0 6px;font-size:13.5px}
+.dom-head div{padding:5px 10px;border-bottom:1px solid var(--line2)}
+.dom-head div:nth-child(odd){background:var(--panel);font-weight:600;color:var(--sub)}
+.dom-head div:nth-last-child(-n+2){border-bottom:0}
+.diagram{border:1px solid var(--line);padding:8px;overflow-x:auto;margin:10px 0}
+.diagram svg{display:block;width:100%;min-width:860px;height:auto}
+svg text{fill:var(--fg);font-family:Pretendard,sans-serif;font-size:12.5px}
+svg .s{font-size:11px;fill:var(--sub)}
+svg .lbl{font-size:12px;font-weight:700;fill:var(--sub)}
+svg .b{font-weight:700}
+svg .lane{fill:var(--panel);stroke:var(--line)}
+svg .bx{fill:var(--bg);stroke:var(--fg);stroke-width:1}
+svg .hl{fill:var(--bg);stroke:var(--point);stroke-width:1.6}
+svg .ln{stroke:var(--fg);stroke-width:1.1;fill:none}
+svg .dl{stroke:var(--point);stroke-width:1.1;fill:none;stroke-dasharray:5 3}
+svg .ah{fill:var(--fg)}
+svg .ah2{fill:var(--point)}
+.theme{position:fixed;top:10px;right:14px;z-index:5;font:inherit;font-size:12px;background:var(--bg);color:var(--fg);border:1px solid var(--line);padding:3px 9px;cursor:pointer}
+@media (max-width:960px){
+  .wrap{grid-template-columns:1fr}
+  nav.toc{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:16px}
+  main{padding:20px 16px 80px}
+  .meta{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .meta div:nth-child(2){border-right:0}
+  .meta div:nth-child(-n+2){border-bottom:1px solid var(--line)}
+  .grid,.grid3{grid-template-columns:minmax(0,1fr)}
+  .dom-head{grid-template-columns:90px minmax(0,1fr)}
+  header.doc h1{font-size:23px}
+}
+@media print{nav.toc,.theme,.filter{display:none}.wrap{display:block}main{padding:0}}
+</style>
+<style>
+main p{margin:6px 0 10px}
+li.chk{list-style:none;margin-left:-18px}
+li.chk::before{content:"";display:inline-block;width:11px;height:11px;border:1px solid var(--fg);margin-right:8px;vertical-align:-1px}
+.note{white-space:normal}
+main h3 + .tbl, main h4 + .tbl{margin-top:6px}
+</style>
+</head>
+<body>
+<button class="theme" type="button" id="themeBtn">테마</button>
+<div class="wrap">
+<nav class="toc" aria-label="목차">
+  <div class="brand">곳간 <span>GOTGAN</span></div>
+  <div class="sub">코드 컨벤션</div>
+  <ol>
+    {{TOC}}
+  </ol>
+</nav>
+<main>
+<header class="doc">
+  <div class="kicker">GOTGAN · CODE CONVENTIONS</div>
+  <h1>{{TITLE}}</h1>
+  <div class="lead">{{KICKER}}</div>
+  <div class="meta">
+    <div><b>버전</b>v1.0 · 2026-10-04</div>
+    <div><b>원본</b>project-convention.md</div>
+    <div><b>범위</b>Git · 백엔드 · DB · 프론트 · 인프라</div>
+    <div><b>변경 방법</b>팀 합의 후 PR</div>
+  </div>
+</header>
+{{BODY}}
+</main>
+</div>
+<script>
+(function(){
+  var root=document.documentElement,btn=document.getElementById('themeBtn');
+  try{var t=localStorage.getItem('conv-theme');if(t)root.setAttribute('data-theme',t);}catch(e){}
+  btn.addEventListener('click',function(){
+    var cur=root.getAttribute('data-theme');
+    var dark=cur?cur==='dark':matchMedia('(prefers-color-scheme: dark)').matches;
+    var next=dark?'light':'dark';root.setAttribute('data-theme',next);
+    try{localStorage.setItem('conv-theme',next);}catch(e){}
+  });
+})();
+</script>
+</body>
+</html>

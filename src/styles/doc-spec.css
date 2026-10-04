@@ -1,0 +1,84 @@
+/* 스펙 · 컨벤션 본문 (원본 project-spec.html의 본문 스타일을 .doc-s 범위로 옮김) */
+.doc-s code, .doc-s .mono { font-family: var(--mono); font-size: .88em; }
+.doc-s p code, .doc-s li code, .doc-s td code { background: var(--code); padding: 0 4px; overflow-wrap: anywhere; }
+.doc-s header.doc { border-bottom: 2px solid var(--fg); padding-bottom: 18px; }
+.doc-s header.doc .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; color: var(--sub); }
+.doc-s header.doc h1 { font-size: 28px; line-height: 1.3; margin: 6px 0 10px; letter-spacing: -.02em; }
+.doc-s .meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); margin-top: 14px; }
+.doc-s .meta div { padding: 8px 12px; border-right: 1px solid var(--line); font-size: 13px; }
+.doc-s .meta div:last-child { border-right: 0; }
+.doc-s .meta b { display: block; font-size: 11.5px; color: var(--sub); font-weight: 600; }
+.doc-s section { padding-top: 8px; }
+.doc-s h2 { font-size: 22px; margin: 44px 0 4px; padding-bottom: 6px; border-bottom: 1px solid var(--fg); letter-spacing: -.01em; }
+.doc-s h2 .n { font-family: var(--mono); color: var(--point); margin-right: 10px; font-size: 18px; }
+.doc-s h3 { font-size: 17px; margin: 30px 0 8px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.doc-s h3 .n { font-family: var(--mono); font-size: 13px; color: var(--sub); }
+.doc-s h4 { font-size: 15px; margin: 20px 0 6px; }
+.doc-s .lead { color: var(--sub); margin: 6px 0 10px; }
+.doc-s p { margin: 6px 0 10px; }
+.doc-s ul.b { margin: 6px 0 10px; padding-left: 18px; }
+.doc-s ul.b li, .doc-s ol.b li { margin: 2px 0; }
+.doc-s ol.b { margin: 6px 0 10px; padding-left: 22px; }
+.doc-s ul.b li::marker { color: var(--muted); }
+.doc-s li.chk { list-style: none; margin-left: -18px; }
+.doc-s li.chk::before { content: ""; display: inline-block; width: 11px; height: 11px; border: 1px solid var(--fg); margin-right: 8px; vertical-align: -1px; }
+.doc-s .tbl { overflow-x: auto; border: 1px solid var(--line); margin: 10px 0 14px; }
+.doc-s table { border-collapse: collapse; width: 100%; font-size: 13.8px; }
+.doc-s th, .doc-s td { padding: 7px 10px; border-bottom: 1px solid var(--line2); text-align: left; vertical-align: top; }
+.doc-s th { background: var(--panel); font-weight: 700; font-size: 12.8px; white-space: nowrap; border-bottom: 1px solid var(--line); }
+.doc-s tr:last-child td { border-bottom: 0; }
+.doc-s td ul { margin: 0; padding-left: 16px; }
+.doc-s td li { margin: 1px 0; }
+.doc-s td.id { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; color: var(--sub); }
+.doc-s td.ref { font-family: var(--mono); font-size: 12px; color: var(--sub); min-width: 150px; }
+.doc-s .req td:nth-child(2) { min-width: 160px; }
+.doc-s .req td:nth-child(2) b { display: block; }
+.doc-s .tag { display: inline-block; font-size: 11px; line-height: 1.5; padding: 0 5px; border: 1px solid var(--line); color: var(--sub); margin: 2px 3px 0 0; white-space: nowrap; }
+.doc-s .p { display: inline-block; min-width: 44px; text-align: center; font-family: var(--mono); font-size: 11.5px; font-weight: 600; padding: 1px 6px; white-space: nowrap; }
+.doc-s .p0 { background: var(--fg); color: var(--bg); }
+.doc-s .p1 { border: 1px solid var(--fg); }
+.doc-s .p2 { border: 1px dashed var(--muted); color: var(--sub); }
+.doc-s .px { color: var(--muted); text-decoration: line-through; }
+.doc-s .note { border-left: 3px solid var(--point); background: var(--panel); padding: 8px 12px; margin: 12px 0; font-size: 14px; }
+.doc-s .note b { margin-right: 4px; }
+.doc-s .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 10px 0; }
+.doc-s .grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.doc-s .box { border: 1px solid var(--line); padding: 10px 14px; }
+.doc-s .box h4 { margin: 2px 0 6px; font-size: 14px; }
+.doc-s .box ul.b { margin: 0; }
+.doc-s pre { background: var(--code); border: 1px solid var(--line); padding: 12px 14px; overflow-x: auto; font-size: 12.8px; line-height: 1.55; margin: 8px 0 14px; }
+.doc-s pre code { font-size: inherit; background: none; padding: 0; }
+.doc-s .filter {
+  position: sticky; top: var(--header-h); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+  padding: 8px 0; margin-top: 12px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 13px;
+}
+.doc-s .filter button { font-size: 12.5px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); padding: 3px 10px; cursor: pointer; }
+.doc-s .filter button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.doc-s .filter .cnt { color: var(--sub); margin-left: auto; }
+.doc-s .dom-head { display: grid; grid-template-columns: 110px minmax(0, 1fr); border: 1px solid var(--line); margin: 8px 0 6px; font-size: 13.5px; }
+.doc-s .dom-head div { padding: 5px 10px; border-bottom: 1px solid var(--line2); }
+.doc-s .dom-head div:nth-child(odd) { background: var(--panel); font-weight: 600; color: var(--sub); }
+.doc-s .dom-head div:nth-last-child(-n+2) { border-bottom: 0; }
+
+.doc-s .diagram { border: 1px solid var(--line); padding: 8px; overflow-x: auto; margin: 10px 0; }
+.doc-s .diagram svg { display: block; width: 100%; min-width: 860px; height: auto; }
+.doc-s svg text { fill: var(--fg); font-family: Pretendard, sans-serif; font-size: 12.5px; }
+.doc-s svg .s { font-size: 11px; fill: var(--sub); }
+.doc-s svg .lbl { font-size: 12px; font-weight: 700; fill: var(--sub); }
+.doc-s svg .b { font-weight: 700; }
+.doc-s svg .lane { fill: var(--panel); stroke: var(--line); }
+.doc-s svg .bx { fill: var(--bg); stroke: var(--fg); stroke-width: 1; }
+.doc-s svg .hl { fill: var(--bg); stroke: var(--point); stroke-width: 1.6; }
+.doc-s svg .ln { stroke: var(--fg); stroke-width: 1.1; fill: none; }
+.doc-s svg .dl { stroke: var(--point); stroke-width: 1.1; fill: none; stroke-dasharray: 5 3; }
+.doc-s svg .ah { fill: var(--fg); }
+.doc-s svg .ah2 { fill: var(--point); }
+
+@media (max-width: 960px) {
+  .doc-s .meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .doc-s .meta div:nth-child(2) { border-right: 0; }
+  .doc-s .meta div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .doc-s .grid, .doc-s .grid3 { grid-template-columns: minmax(0, 1fr); }
+  .doc-s .dom-head { grid-template-columns: 90px minmax(0, 1fr); }
+  .doc-s header.doc h1 { font-size: 23px; }
+}

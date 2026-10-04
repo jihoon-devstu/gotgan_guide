@@ -1,0 +1,62 @@
+/* 디자인 토큰 — 목업 README 디자인 원칙: 먹색 + 주홍 포인트 하나, 각진 모서리, 1px 선.
+   세 문서의 CSS 변수 이름을 모두 여기서 정의해 한 팔레트로 통일한다. */
+:root {
+  --bg: #ffffff;
+  --fg: #141414;
+  --sub: #5c5850;
+  --muted: #8e897f;
+  --line: #d6d2c8;
+  --line2: #ebe8e1;
+  --panel: #f6f4ef;
+  --panel2: #ece8df;
+  --point: #ff5a1f;
+  --point-ink: #c2410c;
+  --code: #f3f1ec;
+  --accent-bg: #fff1ea;
+  --rec: #256b36;
+  --rec-bg: #edf6ef;
+  --warn: #8a5300;
+  --warn-bg: #fdf4e3;
+  --prod: #1d5786;
+  --prod-bg: #eaf2f9;
+  --svg-line: #7a756b;
+  --svg-aws: #fff6ef;
+  --header-h: 56px;
+  --mono: "IBM Plex Mono", Consolas, "D2Coding", monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151413; --fg: #ece9e3; --sub: #aaa497; --muted: #7d786e; --line: #3b3833; --line2: #2a2825;
+    --panel: #1d1c1a; --panel2: #26241f; --point: #ff7a45; --point-ink: #fb8b4f; --code: #22201d;
+    --accent-bg: #2c1d14; --rec: #7fcf93; --rec-bg: #1a2a1e; --warn: #f0b866; --warn-bg: #2d2414;
+    --prod: #86bdf0; --prod-bg: #16222e; --svg-line: #8f897d; --svg-aws: #261d16;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151413; --fg: #ece9e3; --sub: #aaa497; --muted: #7d786e; --line: #3b3833; --line2: #2a2825;
+  --panel: #1d1c1a; --panel2: #26241f; --point: #ff7a45; --point-ink: #fb8b4f; --code: #22201d;
+  --accent-bg: #2c1d14; --rec: #7fcf93; --rec-bg: #1a2a1e; --warn: #f0b866; --warn-bg: #2d2414;
+  --prod: #86bdf0; --prod-bg: #16222e; --svg-line: #8f897d; --svg-aws: #261d16;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font-size: 15px;
+  line-height: 1.65;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; }
+button { font: inherit; color: inherit; }
+code { font-family: var(--mono); }
+:focus-visible { outline: 2px solid var(--point); outline-offset: 2px; }

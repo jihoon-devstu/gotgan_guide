@@ -1,0 +1,63 @@
+/* 가이드라인 본문 (원본 project-guideline.html의 본문 스타일을 .doc-g 범위로 옮김) */
+.doc-g { font-size: 15.5px; line-height: 1.75; }
+.doc-g a { color: var(--point-ink); }
+.doc-g header.hero { border-bottom: 2px solid var(--fg); padding-bottom: 22px; margin-bottom: 10px; }
+.doc-g header.hero h1 { font-size: 30px; line-height: 1.35; margin: 0 0 10px; letter-spacing: -.01em; }
+.doc-g header.hero p { margin: 4px 0; color: var(--sub); }
+.doc-g .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.doc-g .chip { background: var(--panel); border: 1px solid var(--line); padding: 2px 9px; font-size: 12.5px; }
+.doc-g section { padding-top: 30px; }
+.doc-g h2 { font-size: 23px; margin: 36px 0 6px; padding-top: 14px; border-top: 1px solid var(--fg); letter-spacing: -.01em; }
+.doc-g h2 .n { color: var(--point); font-family: var(--mono); font-size: 19px; margin-right: 10px; }
+.doc-g h3 { font-size: 18px; margin: 28px 0 8px; }
+.doc-g h4 { font-size: 15.5px; margin: 20px 0 6px; }
+.doc-g p { margin: 8px 0; }
+.doc-g .lead { color: var(--sub); margin-top: 2px; }
+.doc-g .tbl { overflow-x: auto; margin: 12px 0 16px; border: 1px solid var(--line); }
+.doc-g table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--bg); }
+.doc-g th, .doc-g td { border-bottom: 1px solid var(--line2); padding: 8px 10px; text-align: left; vertical-align: top; }
+.doc-g th { background: var(--panel); font-weight: 600; white-space: nowrap; border-bottom-color: var(--line); }
+.doc-g tr:last-child td { border-bottom: 0; }
+.doc-g td code, .doc-g p code, .doc-g li code { background: var(--code); padding: 1px 5px; font-size: .86em; overflow-wrap: anywhere; }
+.doc-g pre { background: var(--code); padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.6; border: 1px solid var(--line); margin: 10px 0 16px; }
+.doc-g pre code { font-family: var(--mono); }
+.doc-g .cap { font-size: 12.5px; color: var(--sub); margin: 14px 0 -6px; font-family: var(--mono); }
+.doc-g .box { border-left: 4px solid; padding: 10px 14px; margin: 14px 0; font-size: 14.5px; }
+.doc-g .box b.t { display: block; margin-bottom: 2px; }
+.doc-g .rec { border-color: var(--rec); background: var(--rec-bg); }
+.doc-g .rec b.t { color: var(--rec); }
+.doc-g .warn { border-color: var(--warn); background: var(--warn-bg); }
+.doc-g .warn b.t { color: var(--warn); }
+.doc-g .prod { border-color: var(--prod); background: var(--prod-bg); }
+.doc-g .prod b.t { color: var(--prod); }
+.doc-g .q { border-color: var(--point); background: var(--accent-bg); }
+.doc-g .q b.t { color: var(--point-ink); }
+.doc-g .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.doc-g .card { border: 1px solid var(--line); padding: 12px 16px; }
+.doc-g .card h4 { margin-top: 4px; }
+.doc-g ul, .doc-g ol { padding-left: 22px; margin: 8px 0; }
+.doc-g li { margin: 3px 0; }
+.doc-g .tag { display: inline-block; font-size: 11.5px; padding: 0 6px; border: 1px solid var(--line); margin-right: 4px; color: var(--sub); white-space: nowrap; }
+.doc-g .must { color: var(--rec); border-color: var(--rec); }
+.doc-g .should { color: var(--prod); border-color: var(--prod); }
+.doc-g .could { color: var(--warn); border-color: var(--warn); }
+.doc-g .wont { color: var(--muted); }
+
+.doc-g .diagram { border: 1px solid var(--line); padding: 10px; margin: 14px 0; overflow-x: auto; }
+.doc-g .diagram svg { display: block; min-width: 820px; width: 100%; height: auto; }
+.doc-g svg .bx { fill: var(--bg); stroke: var(--svg-line); stroke-width: 1; }
+.doc-g svg .ns { fill: var(--panel); stroke: var(--svg-line); stroke-dasharray: 4 3; }
+.doc-g svg .aws { fill: var(--svg-aws); stroke: var(--point); stroke-width: 1; }
+.doc-g svg .hl { fill: var(--accent-bg); stroke: var(--point); stroke-width: 1.4; }
+.doc-g svg text { fill: var(--fg); font-family: Pretendard, sans-serif; font-size: 12.5px; }
+.doc-g svg text.s { font-size: 11px; fill: var(--sub); }
+.doc-g svg text.b { font-weight: 700; }
+.doc-g svg .ln { stroke: var(--svg-line); stroke-width: 1.2; fill: none; }
+.doc-g svg .ln2 { stroke: var(--point); stroke-width: 1.2; fill: none; stroke-dasharray: 5 3; }
+.doc-g svg .arrowhead { fill: var(--svg-line); }
+.doc-g svg .arrowhead2 { fill: var(--point); }
+
+@media (max-width: 960px) {
+  .doc-g .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .doc-g header.hero h1 { font-size: 24px; }
+}

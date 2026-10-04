@@ -165,7 +165,7 @@ export default function HomePage() {
       </section>
 
       <footer className="home-foot">
-        <span>목업 화면 43개는 <a href={MOCKUP_URL} target="_blank" rel="noreferrer">mock-up-phi.vercel.app ↗</a></span>
+        <span>목업 화면 43개는 <a href={MOCKUP_URL} target="_blank" rel="noreferrer">mockup-page-sable.vercel.app ↗</a></span>
         <span>문서 원본은 저장소 <code>content/</code> — 수정 후 main에 push하면 자동 배포</span>
         <span>컨벤션 MD를 고쳤다면 <code>npm run convention</code>으로 HTML 재생성</span>
       </footer>

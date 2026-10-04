@@ -35,7 +35,7 @@ export const DOCS = [
   },
 ];
 
-export const MOCKUP_URL = 'https://mock-up-phi.vercel.app/';
+export const MOCKUP_URL = 'https://mockup-page-sable.vercel.app/';
 
 // 목업 화면 영역별 시작 경로 (MockupPage README "사용자별 진입 경로")
 export const MOCKUP_AREAS = [

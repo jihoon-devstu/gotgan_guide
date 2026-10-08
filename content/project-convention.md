@@ -23,117 +23,29 @@
 | 보안 위치 | 각 앱 `common/security` | **게이트웨이에만** Spring Security, 업무 서비스는 `common/auth`(헤더 → 사용자) | JWT 검증은 게이트웨이 한 곳 |
 | 로그인 사용자 | `SecurityUtil.getMemberId()` | `@CurrentUser AuthUser` (게이트웨이가 넣은 `X-User-*` 헤더) | 업무 서비스에 SecurityContext 없음 |
 | FK 제약 | 참조 컬럼 FK 필수 | **같은 서비스 안에서만 FK 필수**, 다른 서비스 ID는 논리 참조 + 인덱스 | DB per Service |
-| 테이블명 예외 | 단수형 | 단수형 유지, 예약어 `order`만 **`orders`** 예외 | MySQL 예약어 |
+| 회원 테이블 · 패키지 | `member` · `member/` | **`users` · `user/`** | 서비스(user-service) · 스키마(userdb) 이름과 일치 |
+| 테이블명 예외 | 단수형 | 단수형 유지, **`orders`**(예약어 `order`) · **`users`**(키워드 `user`)만 예외 | MySQL 예약어 · 키워드 |
+| 에러 코드 | 번호형 `ORDER_003` | **의미형 `ORDER_OUT_OF_STOCK`** | 코드만 봐도 의미 · 로그 검색 |
 | 시드 데이터 | `db/seed` V100~ | `db/seed/R__*.sql` (반복 실행) | 내용 수정 시 체크섬 오류 없음 |
+| 프론트 언어 | TypeScript | **JavaScript** (`.js` / `.jsx`) | 목업 그대로 이식 · 입문자 부담 최소화 |
 | 프론트 UI 키트 | shadcn/ui · recharts · sonner | **목업 컴포넌트 · 목업 SVG 차트 · 목업 토스트** | 목업 디자인 원칙 유지 |
 | 프론트 관리자 | `features/admin` 공유 도메인 | **관리자 화면도 각 도메인 feature에** (`features/store`의 입점 심사 등) | 도메인 담당 = 폴더 담당, 공유 폴더 충돌 없음 |
 | 프론트 페이지 | — | `pages/{shop,mypage,seller,admin}` | 4개 화면 영역 |
 
-### 0-3. 회의 안건 — 프로젝트 스펙과 달라지는 점
+### 0-3. 확정 컨벤션 요약
 
-`project-spec.html`(A안)과 이 컨벤션(B안)이 다른 8가지입니다. **이 문서 본문은 B안 기준으로 작성**되어 있으며, 회의에서 A안으로 정한 항목은 해당 절을 고치고, B안으로 정한 항목은 `project-spec.html`을 고칩니다.
+팀 회의에서 확정한 8가지입니다. `project-spec.html`과 다르면 이 표가 우선합니다.
 
-**요약 — 회의록용**
-
-| # | 안건 | A안: 스펙 | B안: 컨벤션 | 추천 | 관련 절 | 결정 |
-|---|---|---|---|---|---|---|
-| 1 | API 응답 형식 | 성공은 래퍼 없음 · 에러는 ProblemDetail | `ApiResponse<T>` 봉투 하나 | B | 2-4 · 2-5 | |
-| 2 | 시간대 | UTC 저장 · 화면만 KST | DB · JDBC · JVM 모두 Asia/Seoul | B | 3-5 | |
-| 3 | 회원 테이블 · 패키지명 | `users` · `user/` | `member` · `member/` | B | 2-1 · 3-2 | |
-| 4 | 생성 · 수정 시각 관리 | JPA Auditing | DB 생성 + `@Generated` | B | 3-5 | |
-| 5 | 에러 코드 형식 | `ORDER_OUT_OF_STOCK` | `ORDER_003` | B | 2-5 | |
-| 6 | 프론트 언어 | JavaScript (목업 그대로) | TypeScript strict | C (절충) | 4-1 | |
-| 7 | 프론트 페이지 위치 | `features/{도메인}/pages` | `pages/{영역}` 분리 | B | 4-2 | |
-| 8 | Redis 키 이름 | `rt:` · `bl:` | `refresh:` · `blacklist:` | B | 2-2 | |
-
-**안건 1. API 응답 형식**
-
-| 구분 | A안: 스펙 | B안: 컨벤션 |
-|---|---|---|
-| 내용 | 성공은 리소스를 그대로 반환, 에러는 RFC 9457 ProblemDetail + `code` | 모든 응답을 `{ code, message, data }` 봉투로 |
-| 장점 | HTTP 표준이고 Spring에 내장 / 응답이 가벼움 / 포트원 등 외부 API와 같은 관례 | 팀이 이미 써 본 방식 / 프론트가 `code === "SUCCESS"` 하나로 판단 / 성공 메시지를 토스트에 바로 사용 |
-| 단점 | 성공과 실패의 모양이 달라 프론트 처리가 두 갈래 / 팀 경험 없음 / 성공 메시지 전달 불가 | 표준이 아님 / 내부 API 클라이언트도 봉투를 벗겨야 함 / HTTP 상태와 `code`를 함께 관리 |
-
-- 영향 범위: 전 서비스 컨트롤러 · `GlobalExceptionHandler` · 게이트웨이 401/403 응답 · 프론트 API 함수 · MSW 데이터
-- 추천: **B** — 4명이 익숙한 방식이 6개 서비스에서 일관되게 지켜지기 쉬움
-
-**안건 2. 시간대**
-
-| 구분 | A안: 스펙 | B안: 컨벤션 |
-|---|---|---|
-| 내용 | DB에 UTC로 저장, API는 ISO-8601(UTC), 화면에서만 KST로 표시 | DB · JDBC · JVM 모두 Asia/Seoul, 서비스 밖으로 나가는 이벤트 시각만 오프셋 포함 |
-| 장점 | 컨테이너 · EKS · Lambda · Loki의 기본값(UTC)과 일치 / 해외 확장에 안전 / 이벤트 시각 비교가 명확 | DB에서 조회한 값 = 화면 값이라 디버깅이 쉬움 / 정산 주차(월~일 KST) · 자동 구매확정 계산이 단순 / 팀 경험 |
-| 단점 | 정산 주차 · 날짜 경계 계산마다 변환 필요 / DB 직접 조회 시 9시간 차이로 혼동 | 세 곳 중 한 곳만 빠져도 9시간 어긋남 (컨테이너 기본이 UTC라 설정 필수) / 해외 확장 시 재작업 |
-
-- 영향 범위: MySQL 설정 · Dockerfile 또는 Deployment의 `TZ` · JDBC URL · 이벤트 DTO · 정산 집계 쿼리
-- 추천: **B** — 국내 단일 리전 서비스이고 정산 로직이 단순해짐. 대신 `TZ` · JDBC · MySQL 설정을 서비스 템플릿과 `init-schemas.sh`에 고정
-
-**안건 3. 회원 테이블 · 패키지명**
-
-| 구분 | A안: 스펙 | B안: 컨벤션 |
-|---|---|---|
-| 내용 | 테이블 `users`, 패키지 `user/` | 테이블 `member`, 패키지 `member/`, 엔티티 `Member` |
-| 장점 | 서비스(user-service) · 스키마(userdb) · 패키지 이름이 모두 일치 / 스펙 문서 수정 없음 | 테이블 단수형 규칙 유지 / MySQL 키워드 `user` · 시스템 테이블 `mysql.user`와 혼동 없음 / 팀 경험 |
-| 단점 | 복수형이라 단수형 규칙의 예외가 하나 더 생김 (단수 `user`는 키워드라 쓰기 어려움) | 서비스 이름(user)과 도메인 이름(member)이 달라 "user냐 member냐" 혼동 / 헤더 `X-User-Id`에 memberId가 들어감 |
-
-- 영향 범위: user-service 패키지 · 엔티티 · DDL, 스펙 문서 표기, 프론트 `features/member`
-- 추천: **B** — README · 용어집에 "회원 = member"를 명시
-- C안(참고): 서비스 이름까지 `member-service`로 변경. ECR · Helm · 게이트웨이 라우트 · ConfigMap 이름이 함께 바뀌므로 인프라를 만들기 전(1주차 초)에만 가능
-
-**안건 4. 생성 · 수정 시각 관리**
-
-| 구분 | A안: 스펙 | B안: 컨벤션 |
-|---|---|---|
-| 내용 | JPA Auditing (`@CreatedDate` · `@LastModifiedDate` · `@EnableJpaAuditing`) | DB가 `DEFAULT` · `ON UPDATE`로 기록, 엔티티는 `@Generated`로 읽기만 |
-| 장점 | 자료 · 예제가 많음 / 저장 직후 값을 바로 사용 / DB 설정과 무관 | JPA를 거치지 않는 변경도 모두 정확 / 팀 경험 |
-| 단점 | **JPA를 거치지 않는 변경은 `updated_at`이 갱신되지 않음** — 우리 프로젝트는 재고 조건부 UPDATE · 배치 · 시드 SQL이 많음 | Hibernate `@Generated` 동작을 이해해야 함 (저장 후 다시 읽는 쿼리 1회) / DDL을 정확히 써야 함 |
-
-- 영향 범위: `BaseTimeEntity` · 모든 DDL
-- 추천: **B** — 조건부 UPDATE가 핵심 로직(재고 · 상태 전이)이라 A안은 누락이 생김
-
-**안건 5. 에러 코드 형식**
-
-| 구분 | A안: 스펙 | B안: 컨벤션 |
-|---|---|---|
-| 내용 | 의미형 코드 `ORDER_OUT_OF_STOCK` | 번호형 코드 `ORDER_003` (enum 상수명은 `OUT_OF_STOCK`) |
-| 장점 | 코드만 봐도 의미를 앎 / 로그 검색이 쉬움 | 팀 경험 / 이름을 다듬어도 코드는 그대로라 프론트 매핑이 깨지지 않음 / 길이가 일정 |
-| 단점 | 이름을 바꾸면 프론트 매핑이 깨져 사실상 바꿀 수 없음 / 길이가 제각각 | 코드만으로는 의미를 모름 → `docs/api/error-codes.md` 목록 관리 필수 |
-
-- 영향 범위: 모든 `{Domain}ErrorCode` · 프론트 에러 처리 · Swagger 설명
-- 추천: **B**
-
-**안건 6. 프론트 언어**
-
-| 구분 | A안: 스펙 | B안: 컨벤션 | C안: 절충 |
+| # | 항목 | 확정 규칙 | 관련 절 |
 |---|---|---|---|
-| 내용 | JavaScript (`.jsx`) — 목업 그대로 | TypeScript `strict`, 모든 파일 `.ts` / `.tsx` | TypeScript 도입 + `allowJs`. **새 코드와 `api/` · `types.ts` · `hooks/`는 TS**, 목업 화면 `.jsx`는 그대로 쓰다가 손대는 파일부터 변환 |
-| 장점 | 목업 즉시 이식 / 입문자 부담 없음 / 설정 단순 | 백엔드 DTO와 타입 1:1 → API 변경이 컴파일 에러로 드러남 / 자동완성 / 팀 이전 경험 | API 계약은 타입으로 보호하면서 목업 이식 속도 유지 / 입문자는 화면부터 JS로 시작 가능 |
-| 단점 | 응답 필드 오타 · 누락을 실행해 봐야 발견 / 6개 서비스 DTO 변경 추적이 어려움 | 목업 43개 화면 변환 작업 / 웹 개발이 처음인 팀원에게 진입 장벽 / 초반 속도 저하 | 두 언어가 섞여 규칙이 하나 늘어남 / 끝까지 변환되지 않은 JS 파일이 남을 수 있음 |
-
-- 영향 범위: 프론트 전체 빌드 설정 · 파일 확장자 · 리뷰 체크리스트
-- 추천: **C** — 회의에서 C로 정하면 4-1 "언어" 행을 "`api/` · `types.ts` · `hooks/` · 새 파일은 TS 필수, 목업 화면은 변환 전까지 `.jsx` 허용"으로 수정
-
-**안건 7. 프론트 페이지 위치**
-
-| 구분 | A안: 스펙 | B안: 컨벤션 |
-|---|---|---|
-| 내용 | `features/{도메인}/pages/` — 화면까지 도메인 폴더 안 | `pages/{shop · mypage · seller · admin}/` — 라우트 1개 = 파일 1개, 로직은 `features/` |
-| 장점 | 도메인 폴더 하나에 전부 있어 담당 경계가 가장 명확 | 목업의 화면 영역 · 라우트와 폴더가 1:1 / 여러 도메인을 조합하는 화면(대시보드)의 위치가 분명 / 팀 경험 |
-| 단점 | 라우트 전체를 한눈에 보기 어려움 / 대시보드처럼 여러 도메인을 쓰는 화면을 둘 곳이 애매 | 기능 하나를 고칠 때 `pages/`와 `features/` 두 곳 / `pages/` 폴더는 여러 명이 함께 씀 |
-
-- 영향 범위: 프론트 폴더 구조 · `router.tsx` · import 경로
-- 추천: **B** — 페이지 파일은 해당 도메인 담당자만 만들고 수정하는 규칙으로 충돌 방지
-
-**안건 8. Redis 키 이름**
-
-| 구분 | A안: 스펙 | B안: 컨벤션 |
-|---|---|---|
-| 내용 | `rt:{userId}:{tokenId}` · `bl:{jti}` | `refresh:{memberId}:{tokenId}` · `blacklist:{jti}` · `cart:{memberId}` |
-| 장점 | 키가 짧음 | 이름만 봐도 용도를 앎 / `{용도}:{식별자}` 규칙 일관 / 팀 경험 |
-| 단점 | 약어라 의미가 불분명, 새 키를 만들 때 기준이 없음 | 키가 몇 바이트 길어짐 (이 규모에선 무시 가능) |
-
-- 영향 범위: user-service · order-service의 Redis 키 생성 메서드
-- 추천: **B** — 사소한 항목이므로 회의에서는 확인만 하고 넘어가도 됨
+| 1 | API 응답 형식 | 모든 응답을 `ApiResponse<T>` 봉투 `{ code, message, data }` 하나로 | 2-4 · 2-5 |
+| 2 | 시간대 | DB · JDBC · JVM 모두 Asia/Seoul, 서비스 밖으로 나가는 이벤트 시각만 오프셋 포함 | 3-5 |
+| 3 | 회원 테이블 · 패키지명 | 테이블 `users`, 패키지 `user/`, 엔티티 `User` | 2-1 · 3-2 |
+| 4 | 생성 · 수정 시각 관리 | DB `DEFAULT` · `ON UPDATE`로 기록, 엔티티는 `@Generated`로 읽기만 | 3-5 |
+| 5 | 에러 코드 형식 | 의미형 `{도메인}_{상황}` — `ORDER_OUT_OF_STOCK` | 2-5 |
+| 6 | 프론트 언어 | JavaScript (`.js` / `.jsx`) — 목업 그대로 | 4-1 |
+| 7 | 프론트 페이지 위치 | `pages/{shop · mypage · seller · admin}/` — 로직은 `features/` | 4-2 |
+| 8 | Redis 키 이름 | `refresh:` · `blacklist:` — `{용도}:{식별자}` | 2-2 |
 
 ---
 
@@ -144,7 +56,7 @@
 - `main` — 보호 브랜치. 직접 push 금지, PR + 승인 1명 + CI 통과 후 Squash merge
 - 작업 브랜치: `feat/{도메인}-{작업}` (예: `feat/order-payment-verify`, `feat/infra-eks-cluster`)
 - 그 외: `fix/` · `refactor/` · `docs/` · `chore/`(빌드 · 설정)
-- 도메인 값: `auth` `member` `store` `product` `order` `settlement` `gateway` `front`(프론트 공통) `infra` `cicd` `obs`(관측성) `sls`(서버리스)
+- 도메인 값: `auth` `user` `store` `product` `order` `settlement` `gateway` `front`(프론트 공통) `infra` `cicd` `obs`(관측성) `sls`(서버리스)
 
 ### 1-2. 커밋 메시지
 
@@ -169,7 +81,7 @@
 ### 1-4. 폴더 소유권
 
 - **다른 사람이 맡은 서비스 · `features/` 폴더는 PR 없이 수정 금지.** 연동이 필요하면 이슈로 요청
-- 공유 파일(`shared/api/queryKeys.ts` · `app/router.tsx` · `01-configmap.yaml` · `values.yaml`)은 **도메인별 주석 구획 안에서만** 수정
+- 공유 파일(`shared/api/queryKeys.js` · `app/router.jsx` · `01-configmap.yaml` · `values.yaml`)은 **도메인별 주석 구획 안에서만** 수정
 - CODEOWNERS로 리뷰어 자동 지정
 
 ### 1-5. 시크릿
@@ -217,7 +129,7 @@ com.sesac.team1.{service}            # service = gateway · user · store · pro
 
 | 서비스 | 도메인 패키지 |
 |---|---|
-| user-service | `auth`(가입 · 로그인 · 토큰) · `member`(회원 · 배송지 · 관리자 회원) |
+| user-service | `auth`(가입 · 로그인 · 토큰) · `user`(회원 · 배송지 · 관리자 회원) |
 | store-service | `apply`(입점 신청 · 심사 · 서류) · `store` · `category`(카테고리 · 수수료) |
 | product-service | `product` · `option`(옵션 · 재고) · `stock`(예약 · 해제) · `image` |
 | order-service | `cart` · `order` · `payment` · `saga` |
@@ -226,7 +138,7 @@ com.sesac.team1.{service}            # service = gateway · user · store · pro
 **도메인 경계 기준**
 
 - "어느 서비스에서 예외를 throw 하는가"가 그 코드의 소속 도메인
-- 엔티티는 리소스를 소유한 도메인에 둠. 같은 서비스 안 **단방향 의존**(예: `auth → member`)은 허용, 역방향 금지
+- 엔티티는 리소스를 소유한 도메인에 둠. 같은 서비스 안 **단방향 의존**(예: `auth → user`)은 허용, 역방향 금지
 - 다른 도메인의 repository를 직접 쓰지 않고 그 도메인의 service를 호출
 
 **유틸 위치**
@@ -266,8 +178,8 @@ com.sesac.team1.{service}            # service = gateway · user · store · pro
 
 | 동사 | 의미 | 예시 |
 |---|---|---|
-| `get{X}` | 조회 — 없으면 예외 throw | `getOrder(orderNo)` → `ORDER_001` |
-| `find{X}` | 조회 — 없을 수 있음, `Optional` 반환 | `findDefaultAddress(memberId)` |
+| `get{X}` | 조회 — 없으면 예외 throw | `getOrder(orderNo)` → `ORDER_NOT_FOUND` |
+| `find{X}` | 조회 — 없을 수 있음, `Optional` 반환 | `findDefaultAddress(userId)` |
 | `create` / `update` / `delete` | 생성 / 수정 / 삭제 | `updateShippingPolicy(...)` |
 | 업무 동사 | 비즈니스 의미가 분명하면 우선 | `signup` · `approve` · `reject` · `confirmPurchase` · `reserveStock` · `aggregateWeekly` |
 
@@ -292,9 +204,9 @@ com.sesac.team1.{service}            # service = gateway · user · store · pro
 
 | 키 | 서비스 | 용도 |
 |---|---|---|
-| `refresh:{memberId}:{tokenId}` | user | 리프레시 토큰 |
+| `refresh:{userId}:{tokenId}` | user | 리프레시 토큰 |
 | `blacklist:{jti}` | user · gateway | 로그아웃한 Access Token |
-| `cart:{memberId}` | order | 장바구니 Hash |
+| `cart:{userId}` | order | 장바구니 Hash |
 | `product::{productId}` | product | `@Cacheable` 캐시 (Spring 기본 형식) |
 
 - 한 Redis를 여러 서비스가 공유하므로 **다른 서비스의 키 접두어 사용 금지**
@@ -322,7 +234,7 @@ return isValid ? repository.save(request.toEntity()) : handleInvalid(request);
 ```java
 boolean isAmountMismatch = !payment.isPaid() || payment.amount() != order.getPayAmount();
 if (isAmountMismatch) {
-    throw new PaymentException(PaymentErrorCode.PAYMENT_MISMATCH);
+    throw new PaymentException(PaymentErrorCode.PAYMENT_AMOUNT_MISMATCH);
 }
 ```
 
@@ -352,7 +264,7 @@ if (isAmountMismatch) {
 | 판매자 | `/api/seller/{자원}` | `PATCH /api/seller/order-items/ship` |
 | 관리자 | `/api/admin/{자원}` | `PATCH /api/admin/applications/7/approve` |
 | 서비스 간 | `/internal/{자원}` | `POST /internal/stock/reservations` — 게이트웨이에 라우트 없음 |
-| 본인 | `/me` | `GET /api/members/me` · `GET /api/orders/me` |
+| 본인 | `/me` | `GET /api/users/me` · `GET /api/orders/me` |
 
 - 자원은 **복수형 명사 · kebab-case**, 행위는 HTTP 메서드
 - 상태 전이처럼 행위 중심 API는 동사 하위 경로 허용 (`/approve` · `/confirm` · `/ship` · `/api/auth/login`)
@@ -365,7 +277,7 @@ if (isAmountMismatch) {
 { "code": "SUCCESS", "message": "주문이 생성되었습니다.", "data": { "orderNo": "20261001-000123" } }
 
 // 실패 (비즈니스 예외)
-{ "code": "ORDER_003", "message": "재고가 부족합니다.", "data": null }
+{ "code": "ORDER_OUT_OF_STOCK", "message": "재고가 부족합니다.", "data": null }
 
 // 실패 (@Valid 검증)
 { "code": "INVALID_INPUT", "message": "수량은 1 이상이어야 합니다.", "data": null }
@@ -404,7 +316,7 @@ return ResponseEntity.badRequest().body(ApiResponse.error(...));
 **컨트롤러 책임**
 
 - 얇게 유지 — 요청 파싱 / 서비스 호출 / 응답 조립만
-- 로그인 사용자는 `@CurrentUser AuthUser`로 받아 **`memberId` · `storeId`를 서비스 파라미터로 전달**
+- 로그인 사용자는 `@CurrentUser AuthUser`로 받아 **`userId` · `storeId`를 서비스 파라미터로 전달**
 - 서비스는 HTTP 헤더 · `HttpServletRequest`를 직접 읽지 않음
 
 ```java
@@ -435,19 +347,19 @@ RuntimeException
 
 **에러 코드 네이밍**
 
-- 코드 문자열: `{도메인}_{3자리}` — 도메인별 001부터 순차
-- enum 상수명: 상황을 설명하는 대문자 스네이크
-- **프론트와 공유된 번호는 바꾸지 않음.** 새 상황은 새 번호
+- 코드 문자열: `{도메인}_{상황}` 대문자 스네이크 — `ORDER_OUT_OF_STOCK` · `PAYMENT_AMOUNT_MISMATCH`
+- enum 상수명 = 코드 문자열 (같은 값을 두 번 관리하지 않음)
+- **프론트와 공유된 코드는 이름을 바꾸지 않음.** 의미가 달라지면 새 코드를 추가
 - 에러 코드 목록은 `docs/api/error-codes.md`에 서비스별로 관리
 
 | 도메인 접두어 | 서비스 | 예 |
 |---|---|---|
-| `AUTH` · `MEMBER` | user | `AUTH_001` 이메일 중복 · `MEMBER_001` 회원 없음 |
-| `APPLY` · `STORE` · `CATEGORY` | store | `APPLY_002` 재신청 제한 기간 |
-| `PRODUCT` · `STOCK` | product | `STOCK_001` 재고 부족 |
-| `CART` · `ORDER` · `PAYMENT` | order | `PAYMENT_002` 결제 금액 불일치 |
-| `SETTLE` | settlement | `SETTLE_001` 이미 집계된 주차 |
-| 공통 (번호 없음) | 전체 | `SUCCESS` · `INVALID_INPUT` · `UNAUTHORIZED` · `FORBIDDEN` · `NOT_FOUND` · `EXTERNAL_API_ERROR` · `GLOBAL_ERROR` |
+| `AUTH` · `USER` | user | `AUTH_DUPLICATE_EMAIL` 이메일 중복 · `USER_NOT_FOUND` 회원 없음 |
+| `APPLY` · `STORE` · `CATEGORY` | store | `APPLY_REAPPLY_RESTRICTED` 재신청 제한 기간 |
+| `PRODUCT` · `STOCK` | product | `STOCK_INSUFFICIENT` 재고 부족 |
+| `CART` · `ORDER` · `PAYMENT` | order | `PAYMENT_AMOUNT_MISMATCH` 결제 금액 불일치 |
+| `SETTLE` | settlement | `SETTLE_ALREADY_AGGREGATED` 이미 집계된 주차 |
+| 공통 (도메인 접두어 없음) | 전체 | `SUCCESS` · `INVALID_INPUT` · `UNAUTHORIZED` · `FORBIDDEN` · `NOT_FOUND` · `EXTERNAL_API_ERROR` · `GLOBAL_ERROR` |
 
 **새 도메인 예외 추가 (3단계)**
 
@@ -456,13 +368,17 @@ RuntimeException
 @Getter
 @RequiredArgsConstructor
 public enum OrderErrorCode implements ErrorCode {
-    ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "ORDER_001", "주문을 찾을 수 없습니다."),
-    INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT, "ORDER_002", "현재 상태에서 처리할 수 없는 요청입니다."),
-    OUT_OF_STOCK(HttpStatus.CONFLICT, "ORDER_003", "재고가 부족합니다.");
+    ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "주문을 찾을 수 없습니다."),
+    ORDER_INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT, "현재 상태에서 처리할 수 없는 요청입니다."),
+    ORDER_OUT_OF_STOCK(HttpStatus.CONFLICT, "재고가 부족합니다.");
 
     private final HttpStatus status;
-    private final String code;
     private final String message;
+
+    @Override
+    public String getCode() {
+        return name(); // 코드 문자열 = enum 상수명
+    }
 }
 
 // 2. {domain}/exception/OrderException.java
@@ -495,9 +411,9 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 - 부가 작업 실패가 본 작업을 실패시키면 안 될 때는 격리하고 로그만 (예: 캐시 무효화 실패)
 - 원자성이 필요한 작업은 한 트랜잭션 (예: 상품주문 상태 변경 + 이력 기록)
 - Repository는 Spring Data JPA 쿼리 메서드 네이밍(`findByStoreIdAndStatus`, `existsByEmail`)
-- 동적 조건 검색은 `JpaSpecificationExecutor` 또는 `@Query` (QueryDSL은 Boot 4 호환 확인 후 팀 결정)
+- 동적 조건 검색은 `JpaSpecificationExecutor` 또는 `@Query`
 - 동시성: 재고처럼 경합하는 값은 **조건부 UPDATE**(`@Modifying @Query`), 엔티티 동시 수정은 `@Version`
-- **서비스 메서드는 `memberId` · `storeId` 등 원시값을 파라미터로 받음** — 테스트 · 스레드 안전성
+- **서비스 메서드는 `userId` · `storeId` 등 원시값을 파라미터로 받음** — 테스트 · 스레드 안전성
 
 ### 2-7. MSA 규칙 (신규)
 
@@ -568,13 +484,13 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 ### 3-1. 명명
 
 - `snake_case`. 파스칼 · 카멜 케이스 금지
-- MySQL 예약어 금지 (`order` · `group` · `key` …) — 유일한 예외 `orders` 테이블
+- MySQL 예약어 · 키워드 금지 (`order` · `user` · `group` · `key` …) — 예외는 `orders` · `users` 두 테이블
 - `data` · `info` · `field` 같은 무의미한 이름 금지
 
 ### 3-2. 테이블
 
-- **단수형** (엔티티 클래스와 1:1): `member` · `store` · `product` · `order_item` · `settlement`
-- 매핑 테이블도 단수형: `member_role` · `product_option`
+- **단수형** (엔티티 클래스와 1:1): `store` · `product` · `order_item` · `settlement` — 예외 `orders` · `users`
+- 매핑 테이블도 단수형: `user_role` · `product_option`
 - 모든 테이블에 `COMMENT` 필수
 - 서비스별 스키마: `userdb` · `storedb` · `productdb` · `orderdb` · `settlementdb`
 
@@ -582,15 +498,15 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 
 | 스키마 | 테이블 |
 |---|---|
-| userdb | `member` · `member_role` · `address` |
+| userdb | `users` · `user_role` · `address` |
 | storedb | `store_application` · `application_document` · `store` · `category` · `category_commission` · `processed_event` · `shedlock` |
 | productdb | `product` · `product_option` · `product_image` · `stock_reservation` · `processed_event` |
-| orderdb | `orders` · `order_item` · `order_store_shipment` · `order_item_history` · `payment` · `saga_instance` · `shedlock` |
-| settlementdb | `settlement_item` · `settlement` · `processed_event` · `shedlock` |
+| orderdb | `orders` · `order_item` · `order_store_shipment` · `order_item_history` · `payment` · `saga_instance` · `outbox_event` · `shedlock` |
+| settlementdb | `settlement_item` · `settlement` · `payout` · `processed_event` · `shedlock` |
 
 ### 3-3. 컬럼
 
-- **PK: `{테이블명}_id`** — `member_id` · `order_item_id` (`orders` 테이블은 `order_id`)
+- **PK: `{테이블명}_id`** — `store_id` · `order_item_id` (`orders`는 `order_id`, `users`는 `user_id`)
 - **FK: `{참조테이블}_id`**, 같은 테이블을 두 번 참조하면 역할 이름 (`buyer_id` · `seller_id`)
 - 다른 서비스의 ID도 같은 이름 규칙 (`order_item.store_id`, `order_item.product_id`)
 - 날짜 · 시간: `_at` (`created_at` · `paid_at` · `confirmed_at`), 날짜만: `_date`
@@ -604,7 +520,7 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 |---|---|---|
 | PK | `pk_{테이블}` | `pk_order_item` |
 | FK | `fk_{테이블}_{참조/역할}` | `fk_order_item_orders` |
-| Unique | `uk_{테이블}_{컬럼}` | `uk_member_email` · `uk_settlement_store_week` |
+| Unique | `uk_{테이블}_{컬럼}` | `uk_users_email` · `uk_settlement_store_week` |
 | Index | `idx_{테이블}_{컬럼들}` | `idx_order_item_store_status` |
 
 ### 3-5. 시간 컬럼
@@ -689,7 +605,7 @@ public abstract class BaseTimeEntity {
 
 **UNIQUE**
 
-- 비즈니스적으로 유일한 값은 DB UNIQUE로 강제 — `email` · `order_no` · `payment_id` · `(store_id, week)` · `event_id`
+- 비즈니스적으로 유일한 값은 DB UNIQUE로 강제 — `email` · `order_no` · `portone_payment_id` · `(store_id, week)` · `event_id`
 - 복합 PK 금지 — PK는 단일 AUTO_INCREMENT, 중복 방지는 UNIQUE로
 
 ### 3-8. 인덱스
@@ -725,6 +641,7 @@ public abstract class BaseTimeEntity {
 
 - DB 컬럼명은 이 규칙을 따르고, 포트원 등 외부 필드명 매핑은 `client`의 DTO에서 처리
 - 외부 숫자형 문자열 ID는 `VARCHAR` (`pg_tx_id`)
+- 외부 ID가 PK 이름(`{테이블}_id`)과 겹치면 출처 접두어를 붙임 — 포트원 `paymentId` → `payment.portone_payment_id`
 
 ---
 
@@ -734,13 +651,13 @@ public abstract class BaseTimeEntity {
 
 | 분류 | 기술 | 규칙 |
 |---|---|---|
-| 언어 | TypeScript 5.x | `strict: true`, 새 파일은 `.ts` / `.tsx`만. 목업 `.jsx`는 이식하면서 변환 |
+| 언어 | JavaScript (ES2022) | 목업 그대로 — 컴포넌트 `.jsx`, 그 외 `.js`. TypeScript 도입 안 함 |
 | 빌드 | Vite 6 · Node.js 20 LTS | `import.meta.env.VITE_*` |
-| 라우팅 | React Router v7 | 라우트 정의는 `app/router.tsx` **단일 파일** |
+| 라우팅 | React Router v7 | 라우트 정의는 `app/router.jsx` **단일 파일** |
 | 서버 상태 | TanStack Query v5 | API 데이터는 전부 여기서 (4-6) |
 | 클라이언트 상태 | Zustand | `authStore` — accessToken · user · isAuthReady / UI 상태 |
 | 표 | TanStack Table v8 | 4-7 |
-| 폼 | react-hook-form + zod | 스키마는 `features/{domain}/schemas.ts` |
+| 폼 | react-hook-form + zod | 스키마는 `features/{domain}/schemas.js` |
 | HTTP | Axios | `withCredentials: true` 고정 · 상대경로 `/api/...` |
 | 스타일 | Tailwind CSS v4 | 디자인 토큰은 `styles/index.css`의 `@theme` (목업 토큰) |
 | UI 컴포넌트 | 목업 공통 컴포넌트 | `shared/components/ui/` — shadcn 등 새 UI 키트 도입 안 함 |
@@ -756,10 +673,10 @@ public abstract class BaseTimeEntity {
 ```
 frontend/src/
 ├── app/                          # 앱 전역
-│   ├── router.tsx                #   전체 라우트 (단일 파일, 도메인별 주석 구획)
-│   ├── providers.tsx             #   QueryClientProvider 등
-│   ├── bootstrap.ts              #   부팅 시 refresh 1회 → 로그인 상태 복구
-│   └── App.tsx
+│   ├── router.jsx                #   전체 라우트 (단일 파일, 도메인별 주석 구획)
+│   ├── providers.jsx             #   QueryClientProvider 등
+│   ├── bootstrap.js              #   부팅 시 refresh 1회 → 로그인 상태 복구
+│   └── App.jsx
 ├── pages/                        # 라우트 1개 = 페이지 파일 1개. features 조립만
 │   ├── shop/                     #   메인 · 상품 · 스토어 · 장바구니 · 주문서 · 로그인 · 입점 신청
 │   ├── mypage/                   #   주문 · 클레임 · 회원정보 · 배송지
@@ -767,22 +684,21 @@ frontend/src/
 │   └── admin/                    #   관리자
 ├── features/                     # 도메인별 구현 (담당 경계 = 폴더 경계)
 │   ├── auth/                     #   로그인 · 가입 · authStore · 가드
-│   ├── member/                   #   회원정보 · 배송지 · 관리자 회원
+│   ├── user/                     #   회원정보 · 배송지 · 관리자 회원
 │   ├── store/                    #   입점 신청 · 스토어 · 입점 심사 · 카테고리
 │   ├── product/                  #   상품 목록 · 상세 · 판매자 상품
 │   ├── order/                    #   장바구니 · 주문 · 결제 · 판매자 주문
 │   └── settlement/               #   정산 (판매자 · 관리자)
-│       ├── api/                  #     settlementApi.ts
-│       ├── hooks/                #     useSettlementsQuery.ts · usePaySettlementMutation.ts
+│       ├── api/                  #     settlementApi.js
+│       ├── hooks/                #     useSettlementsQuery.js · usePaySettlementMutation.js
 │       ├── components/
-│       ├── schemas.ts            #     zod
-│       └── types.ts              #     백엔드 DTO와 1:1
+│       └── schemas.js            #     zod
 ├── shared/                       # 도메인에 속하지 않는 공통
-│   ├── api/                      #   axiosInstance.ts · queryKeys.ts · refresh.ts(single-flight)
+│   ├── api/                      #   axiosInstance.js · queryKeys.js · refresh.js(single-flight)
 │   ├── components/ui/            #   목업 공통 컴포넌트 (Pill · Price · Modal · Kpi · BarChart …)
 │   ├── components/common/        #   RequireRole · ConfirmModal · EmptyState · SortableHeader
 │   ├── layouts/                  #   ShopLayout · MyPageLayout · ConsoleLayout
-│   ├── hooks/  stores/  utils/  types/   # types/api.ts = ApiResponse · PageResponse
+│   ├── hooks/  stores/  utils/
 ├── mocks/                        # MSW handlers · fixtures
 └── styles/index.css              # Tailwind 진입 · @theme 디자인 토큰
 ```
@@ -809,7 +725,7 @@ frontend/src/
 - 가드: `<RequireRole role="SELLER">` — **`authStore.user.roles`로 판단** (토큰 직접 디코딩 안 함)
 - `isAuthReady` 이전에는 판단하지 않음 (새로고침 시 잘못된 리다이렉트 방지)
 - **프론트 가드는 UX 장치일 뿐, 실제 접근 제어는 게이트웨이 · 서비스**
-- `router.tsx`는 영역 · 도메인별 주석 구획에만 추가, catch-all(`*`)은 항상 맨 마지막
+- `router.jsx`는 영역 · 도메인별 주석 구획에만 추가, catch-all(`*`)은 항상 맨 마지막
 
 ### 4-4. 인증
 
@@ -817,11 +733,11 @@ frontend/src/
 |---|---|---|
 | 저장 | `authStore`(Zustand) 메모리 | HttpOnly 쿠키 (JS 접근 불가) |
 | 전송 | `Authorization: Bearer {AT}` | 브라우저 자동 (같은 출처 · Vercel rewrite) |
-| 서버 저장 | 없음 (로그아웃 시 blacklist만) | Redis `refresh:{memberId}:{tokenId}` |
+| 서버 저장 | 없음 (로그아웃 시 blacklist만) | Redis `refresh:{userId}:{tokenId}` |
 | 재발급 | `POST /api/auth/refresh` | 로테이션 |
 
-- 부팅: `app/bootstrap.ts`가 `/api/auth/refresh`를 1회 호출 → 성공 시 로그인 복구, 401이면 비로그인 상태
-- AT 만료(401): axios 응답 인터셉터가 single-flight(`shared/api/refresh.ts`)로 재발급 후 원 요청 재시도
+- 부팅: `app/bootstrap.js`가 `/api/auth/refresh`를 1회 호출 → 성공 시 로그인 복구, 401이면 비로그인 상태
+- AT 만료(401): axios 응답 인터셉터가 single-flight(`shared/api/refresh.js`)로 재발급 후 원 요청 재시도
 - AT를 `localStorage` · `sessionStorage`에 저장 금지. RT는 프론트 코드에서 다루지 않음
 - 판매자 전환(입점 승인) 후에는 refresh로 새 roles를 받음
 
@@ -829,44 +745,43 @@ frontend/src/
 
 | 대상 | 규칙 | 예시 |
 |---|---|---|
-| 컴포넌트 파일 | PascalCase | `ProductCard.tsx` |
-| 페이지 컴포넌트 | `~Page` 접미사 필수, 영역 접두어 | `SellerOrderListPage.tsx` · `AdminApplicationDetailPage.tsx` |
+| 컴포넌트 파일 | PascalCase | `ProductCard.jsx` |
+| 페이지 컴포넌트 | `~Page` 접미사 필수, 영역 접두어 | `SellerOrderListPage.jsx` · `AdminApplicationDetailPage.jsx` |
 | 커스텀 훅 | `use` 접두사, 조회 `use{X}Query` · 변경 `use{행위}Mutation` | `useCartQuery` · `useShipOrderItemsMutation` |
-| API 모듈 | `{도메인}Api.ts`, 함수는 `get` / `create` / `update` / `delete` + 업무 동사 | `orderApi.ts` → `getMyOrders()` · `confirmPurchase()` |
-| 타입 | PascalCase, 백엔드 DTO 이름 그대로 | `OrderDetailResponse` · `OrderCreateRequest` |
+| API 모듈 | `{도메인}Api.js`, 함수는 `get` / `create` / `update` / `delete` + 업무 동사 | `orderApi.js` → `getMyOrders()` · `confirmPurchase()` |
 | zod 스키마 | `{이름}Schema` | `storeApplySchema` |
-| Zustand 스토어 | `use{X}Store`, 파일 `{x}Store.ts` | `useAuthStore` |
+| Zustand 스토어 | `use{X}Store`, 파일 `{x}Store.js` | `useAuthStore` |
 | 상수 | UPPER_SNAKE | `PAYMENT_TIMEOUT_MINUTES` |
-| queryKey | `shared/api/queryKeys.ts` 팩토리에서만 (즉석 배열 금지) | `queryKeys.orders.my(params)` |
+| queryKey | `shared/api/queryKeys.js` 팩토리에서만 (즉석 배열 금지) | `queryKeys.orders.my(params)` |
 | 함수 형태 | 컴포넌트 · 훅 · 최상위 = `function` 선언문, 내부 핸들러 = 화살표 함수 `handle{Event}` | `const handleShipClick = () => {}` |
 | 이벤트 props | `on{Event}` | `onConfirm` |
 
 ### 4-6. TanStack Query 패턴
 
 세 가지를 그대로 따릅니다.
-**① queryKey는 팩토리에서만 ② API 함수는 `{도메인}Api.ts`로 분리 ③ 컴포넌트는 `function` 선언문 + 내부 핸들러는 화살표 함수**
+**① queryKey는 팩토리에서만 ② API 함수는 `{도메인}Api.js`로 분리 ③ 컴포넌트는 `function` 선언문 + 내부 핸들러는 화살표 함수**
 
 **① queryKey 팩토리 — 도메인별 구획**
 
-```ts
-// shared/api/queryKeys.ts
+```js
+// shared/api/queryKeys.js
 export const queryKeys = {
   // ── product ──────────────────────
   products: {
-    all: () => ['products'] as const,
-    list: (filters: ProductFilters) => ['products', 'list', filters] as const,
-    detail: (id: number) => ['products', 'detail', id] as const,
-    seller: (params: SellerProductParams) => ['products', 'seller', params] as const,
+    all: () => ['products'],
+    list: (filters) => ['products', 'list', filters],
+    detail: (id) => ['products', 'detail', id],
+    seller: (params) => ['products', 'seller', params],
   },
   // ── order ────────────────────────
-  cart: { all: () => ['cart'] as const },
+  cart: { all: () => ['cart'] },
   orders: {
-    my: (params: MyOrderParams) => ['orders', 'my', params] as const,
-    detail: (orderNo: string) => ['orders', 'detail', orderNo] as const,
-    sellerItemsAll: () => ['orders', 'seller-items'] as const,               // 무효화용 상위 키
-    sellerItems: (params: SellerOrderParams) => ['orders', 'seller-items', params] as const,
+    my: (params) => ['orders', 'my', params],
+    detail: (orderNo) => ['orders', 'detail', orderNo],
+    sellerItemsAll: () => ['orders', 'seller-items'],               // 무효화용 상위 키
+    sellerItems: (params) => ['orders', 'seller-items', params],
   },
-  // ── settlement · store · member ── (각 도메인 구획에만 추가)
+  // ── settlement · store · user ── (각 도메인 구획에만 추가)
 };
 ```
 
@@ -875,34 +790,32 @@ export const queryKeys = {
 
 **② API 함수**
 
-```ts
-// features/order/api/orderApi.ts
+```js
+// features/order/api/orderApi.js
 import { axiosInstance } from '@/shared/api/axiosInstance';
-import type { ApiResponse } from '@/shared/types/api';
-import type { OrderDetailResponse } from '../types';
 
-export async function getOrderDetail(orderNo: string): Promise<OrderDetailResponse> {
-  const { data } = await axiosInstance.get<ApiResponse<OrderDetailResponse>>(`/api/orders/${orderNo}`);
+export async function getOrderDetail(orderNo) {
+  const { data } = await axiosInstance.get(`/api/orders/${orderNo}`);
   return data.data; // ApiResponse 봉투에서 data만 꺼낸다
 }
 ```
 
 **③ 조회 · 변경**
 
-```ts
-// features/order/hooks/useOrderDetailQuery.ts
-export function useOrderDetailQuery(orderNo: string) {
+```js
+// features/order/hooks/useOrderDetailQuery.js
+export function useOrderDetailQuery(orderNo) {
   return useQuery({
     queryKey: queryKeys.orders.detail(orderNo),
     queryFn: () => getOrderDetail(orderNo),
   });
 }
 
-// features/order/hooks/useShipOrderItemsMutation.ts
+// features/order/hooks/useShipOrderItemsMutation.js
 export function useShipOrderItemsMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (request: ShipRequest) => shipOrderItems(request),
+    mutationFn: (request) => shipOrderItems(request),
     onSuccess: () => {
       // 상위 키로 무효화하면 필터 · 페이지가 다른 목록까지 모두 새로 고침된다
       queryClient.invalidateQueries({ queryKey: queryKeys.orders.sellerItemsAll() });
@@ -918,7 +831,7 @@ export function useShipOrderItemsMutation() {
 | 장바구니 수량처럼 즉시 반영이 필요한 변경 | `useMutation` + 낙관적 업데이트 (실패 시 롤백) |
 | 무한 스크롤 · 더보기 | `useInfiniteQuery` (페이지 형식 `PageResponse` 기준) |
 | 판매자 새 주문 확인 | `refetchInterval: 30_000` |
-| 401 → 재발급 | axios 인터셉터 (`shared/api/axiosInstance.ts`) |
+| 401 → 재발급 | axios 인터셉터 (`shared/api/axiosInstance.js`) |
 
 - 예외: 성공 후 화면을 떠나는 인증 액션(로그인 · 로그아웃 · 비밀번호 변경)과 **포트원 결제 흐름**(`requestPayment` → 결제 검증)은 API 함수 직접 호출 허용. 끝난 뒤 필요한 queryKey만 무효화
 - 에러 메시지는 `error.response.data.message`(ApiResponse) 사용, 코드별 분기는 `code`로
@@ -927,16 +840,16 @@ export function useShipOrderItemsMutation() {
 
 - **데모 규모(수백 건 이하) 목록은 전체 1회 로드 + 클라이언트에서 검색 · 정렬 · 페이징** (관리자 입점 심사 · 스토어 · 회원 · 정산, 판매자 상품)
 - 건수가 계속 늘어나는 목록(판매자 주문, 구매자 상품 목록)은 **서버 페이징**(`manualPagination` · `manualSorting`)
-- 정렬 헤더는 `shared/components/common/SortableHeader.tsx` 재사용
+- 정렬 헤더는 `shared/components/common/SortableHeader.jsx` 재사용
 - **`state`에 넘기는 배열 · 객체는 `useMemo`, 함수는 컴포넌트 바깥(모듈 스코프) 또는 `useCallback`** — 매 렌더링 새 참조를 넘기면 무한 루프로 브라우저가 멈춤
 
-```tsx
+```jsx
 // 금지 — 렌더링마다 새 배열 · 새 함수
 state: { columnFilters: status === 'ALL' ? [] : [{ id: 'status', value: status }] },
 globalFilterFn: (row, id, value) => { /* ... */ },
 
 // 올바름
-function globalFilterFn(row: Row<StoreRow>, columnId: string, filterValue: string) { /* ... */ }   // 모듈 스코프
+function globalFilterFn(row, columnId, filterValue) { /* ... */ }   // 모듈 스코프
 
 function AdminStoreListPage() {
   const columnFilters = useMemo(
@@ -960,7 +873,7 @@ function AdminStoreListPage() {
 
 ### 4-9. 트러블슈팅
 
-- **새로고침하면 로그아웃됨** — ① `bootstrap.ts`의 refresh 호출 완료 여부 ② 가드가 `isAuthReady` 전에 판단하는지 ③ `authStore`에 AT가 들어갔는지
+- **새로고침하면 로그아웃됨** — ① `bootstrap.js`의 refresh 호출 완료 여부 ② 가드가 `isAuthReady` 전에 판단하는지 ③ `authStore`에 AT가 들어갔는지
 - **401 후 자동 재발급이 안 됨** — ① Network 탭에 refresh 요청이 찍히는지 ② `axiosInstance`를 거치지 않는 별도 axios 호출이 있는지
 - **CORS 에러** — 절대경로(`http://...`)로 호출하고 있지 않은지. 로컬은 Vite 프록시, 배포는 Vercel rewrite — 항상 상대경로 `/api/...`
 - **`import.meta.env.VITE_...`가 undefined** — `VITE_` 접두사, `.env.local` 수정 후 dev 서버 재시작, Vercel은 환경 변수 추가 후 재배포
@@ -1030,17 +943,17 @@ function AdminStoreListPage() {
 - [ ] 도메인 패키지 안에 controller · service · repository · entity · dto · exception 구조인가?
 - [ ] 컨트롤러가 얇은가? `@CurrentUser`로 받아 원시값을 서비스에 넘기는가?
 - [ ] 응답이 `ResponseEntity<ApiResponse<T>>`인가? 컨트롤러에서 `error()`를 직접 호출하지 않는가?
-- [ ] `RuntimeException` 대신 도메인 예외 + ErrorCode를 쓰는가? 새 코드가 `docs/api/error-codes.md`에 있는가?
+- [ ] `RuntimeException` 대신 도메인 예외 + ErrorCode를 쓰는가? 새 코드가 `{도메인}_{상황}` 형식이고 `docs/api/error-codes.md`에 있는가?
 - [ ] 엔티티에 `@Setter`가 없고 상태 변경이 의미 있는 메서드인가?
 - [ ] `@Transactional`이 서비스에만 있고, 원격 호출이 트랜잭션 밖에 있는가?
 - [ ] 다른 서비스 호출에 타임아웃이 있고 실패가 도메인 예외로 변환되는가?
-- [ ] 소유권 검사(storeId · memberId)가 있는가?
+- [ ] 소유권 검사(storeId · userId)가 있는가?
 - [ ] 이벤트 · Saga 참여 API가 멱등이고 테스트가 있는가?
 - [ ] 비밀 값 · 개인정보가 로그에 없는가?
 
 **DB**
 
-- [ ] 테이블명이 단수형 snake_case인가? (`orders`만 예외)
+- [ ] 테이블명이 단수형 snake_case인가? (`orders` · `users`만 예외)
 - [ ] PK가 `{테이블}_id` 단일 BIGINT AUTO_INCREMENT인가?
 - [ ] 같은 서비스 참조에는 FK, 다른 서비스 ID에는 인덱스 + COMMENT가 있는가?
 - [ ] 유일해야 하는 값에 UNIQUE가 있는가?
@@ -1053,7 +966,7 @@ function AdminStoreListPage() {
 
 **프론트엔드**
 
-- [ ] `.ts` / `.tsx`이고 `any`가 없는가?
+- [ ] 컴포넌트는 `.jsx`, 그 외는 `.js`인가? (TypeScript 파일이 섞이지 않았는가)
 - [ ] 페이지는 `pages/`, 로직은 `features/{도메인}`에 있는가?
 - [ ] queryKey를 팩토리에서만 만들었는가?
 - [ ] 변경 후 관련 queryKey를 무효화하는가?

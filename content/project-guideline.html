@@ -311,7 +311,7 @@ svg .arrowhead2{fill:var(--accent)}
 <h3>서비스를 나누는 6가지 질문</h3>
 <ol>
 <li><b>이 데이터의 주인은 누구인가?</b> 한 테이블을 "쓰는(INSERT/UPDATE)" 서비스는 하나여야 합니다. 두 서비스가 같은 테이블을 고치면 그건 하나의 서비스입니다.</li>
-<li><b>반드시 한 트랜잭션으로 묶여야 하는가?</b> 주문(orders)과 상품주문(order_items)은 항상 함께 바뀌므로 같은 서비스. 주문과 재고는 잠시 어긋나도 보상할 수 있으므로 다른 서비스여도 됩니다(Saga).</li>
+<li><b>반드시 한 트랜잭션으로 묶여야 하는가?</b> 주문(orders)과 상품주문(order_item)은 항상 함께 바뀌므로 같은 서비스. 주문과 재고는 잠시 어긋나도 보상할 수 있으므로 다른 서비스여도 됩니다(Saga).</li>
 <li><b>변경 이유가 같은가?</b> 정산 규칙이 바뀔 때 함께 고쳐야 하는 코드는 한곳에 둡니다.</li>
 <li><b>부하 특성이 다른가?</b> 상품 조회는 많고 정산 배치는 주 1회. 다르면 나눌 이유가 됩니다.</li>
 <li><b>한 사람(또는 한 팀)이 책임질 수 있는가?</b> (Conway의 법칙) 4명이면 서비스 4~6개가 상한입니다.</li>
@@ -663,7 +663,7 @@ API에도 HTTPS를 붙이려면 클러스터에 <b>cert-manager + Let's Encrypt<
 <div class="tbl"><table>
 <tr><th>규칙</th><th>뜻</th><th>어기면</th></tr>
 <tr><td>내 테이블은 나만 쓴다</td><td>다른 서비스는 내 API나 이벤트로만 데이터를 얻는다</td><td>스키마를 바꿀 때마다 다른 팀 코드가 깨진다</td></tr>
-<tr><td>서비스 간 FK · JOIN 금지</td><td><code>order_items.product_id</code>는 숫자일 뿐, FK가 아니다</td><td>DB를 나눌 수 없게 된다</td></tr>
+<tr><td>서비스 간 FK · JOIN 금지</td><td><code>order_item.product_id</code>는 숫자일 뿐, FK가 아니다</td><td>DB를 나눌 수 없게 된다</td></tr>
 <tr><td>필요한 값은 스냅샷</td><td>주문 시점의 상품명·가격·스토어명·카테고리를 주문에 복사</td><td>상품 가격이 바뀌면 과거 주문 금액도 바뀐다</td></tr>
 <tr><td>화면 조합은 API 조합</td><td>판매자 대시보드 = 주문 API + 상품 API + 정산 API를 프론트가 병렬 호출</td><td>DB JOIN 유혹 → 경계 붕괴</td></tr>
 <tr><td>스키마 변경은 마이그레이션 도구로</td><td>서비스마다 Flyway(<code>db/migration/V1__init.sql</code>)</td><td>"내 로컬에선 되는데" 지옥</td></tr>
@@ -674,22 +674,23 @@ API에도 HTTPS를 붙이려면 클러스터에 <b>cert-manager + Let's Encrypt<
 <pre><code>#!/bin/bash
 # .sql 파일은 환경 변수를 치환하지 못하므로 .sh로 작성한다.
 # *_DB_PASSWORD 는 Secret(← Secrets Manager)에서 mysql 컨테이너 환경 변수로 주입
+# MySQL 시간대는 StatefulSet args --default-time-zone=+09:00 으로 고정 (JDBC · JVM도 Asia/Seoul)
 set -e
 for svc in user store product order settlement; do
   pw_var="$(echo "$svc" | tr a-z A-Z)_DB_PASSWORD"
   mysql -uroot -p"$MYSQL_ROOT_PASSWORD" &lt;&lt;SQL
-CREATE DATABASE IF NOT EXISTS ${svc}db CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE DATABASE IF NOT EXISTS ${svc}db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '${svc}'@'%' IDENTIFIED BY '${!pw_var}';
 GRANT ALL PRIVILEGES ON ${svc}db.* TO '${svc}'@'%';   -- 자기 스키마 밖은 볼 수 없다
 SQL
 done</code></pre>
 <div class="tbl"><table>
 <tr><th>서비스</th><th>MySQL 스키마 (주요 테이블)</th><th>그 외 저장소</th></tr>
-<tr><td>user</td><td>userdb: users, user_roles, addresses</td><td>Redis: 리프레시 토큰</td></tr>
-<tr><td>store</td><td>storedb: store_applications, application_documents, stores, categories, category_commissions, processed_events</td><td>S3: 입점 서류</td></tr>
-<tr><td>product</td><td>productdb: products, product_options, product_images, stock_reservations, (reviews)</td><td>S3: 이미지, Redis: 캐시(선택)</td></tr>
+<tr><td>user</td><td>userdb: users, user_role, address</td><td>Redis: 리프레시 토큰</td></tr>
+<tr><td>store</td><td>storedb: store_application, application_document, store, category, category_commission, processed_event</td><td>S3: 입점 서류</td></tr>
+<tr><td>product</td><td>productdb: product, product_option, product_image, stock_reservation, (review)</td><td>S3: 이미지, Redis: 캐시(선택)</td></tr>
 <tr><td>order</td><td>orderdb: <b>아래 예시</b></td><td>Redis: 장바구니</td></tr>
-<tr><td>settlement</td><td>settlementdb: settlement_items, settlements, payouts, processed_events</td><td>—</td></tr>
+<tr><td>settlement</td><td>settlementdb: settlement_item, settlement, payout, processed_event</td><td>—</td></tr>
 </table></div>
 
 <h3>Flyway — 이 구조에서도 쓰는 것이 좋은가? → 예, 처음부터 넣으세요</h3>
@@ -726,7 +727,7 @@ spring:
 ├─ migration/
 │  ├─ V1__init.sql                    # 최초 테이블 (아래 orderdb 예시가 이 파일)
 │  ├─ V2__add_order_item_tracking.sql
-│  └─ V3__add_saga_instances.sql
+│  └─ V3__add_saga_instance.sql
 └─ seed/
    └─ R__demo_seed.sql                # R__ = 반복 실행(내용이 바뀌면 다시 실행). 목업 데이터 변환</code></pre>
 <div class="box warn"><b class="t">Flyway 규칙 4가지</b>
@@ -739,134 +740,145 @@ spring:
 
 <h3>예시: order-service 스키마 (orderdb)</h3>
 <p>스마트스토어 방식대로 <b>주문(결제 단위)</b> 아래 <b>상품주문(스토어·상품 단위)</b>을 두고, 상태는 상품주문 단위로 관리합니다. 다른 서비스의 ID는 FK 없이 숫자로만 들고, 표시에 필요한 값은 스냅샷으로 복사합니다.</p>
-<pre><code>-- 주문 = 결제 단위 (한 번 결제에 여러 스토어 상품이 섞일 수 있음)
+<pre><code>-- 컬럼 순서: PK → 같은 서비스 FK → 다른 서비스 ID → 비즈니스 → 상태 → 도메인 시간 → 감사 컬럼 → version (컨벤션 3-9)
+
+-- 주문 = 결제 단위 (한 번 결제에 여러 스토어 상품이 섞일 수 있음)
 CREATE TABLE orders (
-  id                 BIGINT       NOT NULL AUTO_INCREMENT,
-  order_no           VARCHAR(20)  NOT NULL,              -- 사람이 읽는 번호 예: 20261001-000123
-  buyer_id           BIGINT       NOT NULL,              -- user-service의 ID (FK 아님)
-  orderer_name       VARCHAR(50)  NOT NULL,              -- 스냅샷: 알림 Lambda가 user-service를 부르지 않게
-  orderer_email      VARCHAR(100) NOT NULL,
-  receiver_name      VARCHAR(50)  NOT NULL,
-  receiver_phone     VARCHAR(20)  NOT NULL,
-  zipcode            VARCHAR(10)  NOT NULL,
-  address1           VARCHAR(200) NOT NULL,
-  address2           VARCHAR(200),
-  total_product_amt  BIGINT       NOT NULL,              -- 금액은 원 단위 정수 (float 금지)
-  total_shipping_fee BIGINT       NOT NULL,
-  discount_amt       BIGINT       NOT NULL DEFAULT 0,
-  pay_amt            BIGINT       NOT NULL,
-  status             VARCHAR(20)  NOT NULL,              -- PENDING / PAID / FAILED / CANCELLED
-  paid_at            DATETIME(6),
-  created_at         DATETIME(6)  NOT NULL,
-  updated_at         DATETIME(6)  NOT NULL,
-  version            BIGINT       NOT NULL DEFAULT 0,    -- JPA @Version 낙관적 락
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_orders_no (order_no),
-  KEY idx_orders_buyer (buyer_id, created_at)
-);
+  order_id           BIGINT       NOT NULL AUTO_INCREMENT,
+  buyer_id           BIGINT       NOT NULL COMMENT 'user-service users.user_id (논리 참조)',
+  order_no           VARCHAR(20)  NOT NULL COMMENT '외부 노출 주문번호 예: 20261001-000123',
+  orderer_name       VARCHAR(50)  NOT NULL COMMENT '주문 시점 스냅샷 — 알림 Lambda가 user-service를 부르지 않게',
+  orderer_email      VARCHAR(100) NOT NULL COMMENT '주문 시점 스냅샷',
+  receiver_name      VARCHAR(50)  NOT NULL COMMENT '수령인',
+  receiver_phone     VARCHAR(20)  NOT NULL COMMENT '수령인 연락처',
+  zipcode            VARCHAR(10)  NOT NULL COMMENT '우편번호',
+  address1           VARCHAR(200) NOT NULL COMMENT '기본 주소',
+  address2           VARCHAR(200)          COMMENT '상세 주소',
+  total_product_amt  BIGINT       NOT NULL COMMENT '상품 금액 합계 (원, 정수)',
+  total_shipping_fee BIGINT       NOT NULL COMMENT '배송비 합계 (원)',
+  discount_amt       BIGINT       NOT NULL DEFAULT 0 COMMENT '할인 금액 (원)',
+  pay_amt            BIGINT       NOT NULL COMMENT '결제 금액 (원)',
+  status             VARCHAR(20)  NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING / PAID / FAILED / CANCELLED',
+  paid_at            DATETIME(6)           COMMENT '결제 완료 시각 (애플리케이션이 기록)',
+  created_at         DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at         DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  version            BIGINT       NOT NULL DEFAULT 0 COMMENT 'JPA @Version 낙관적 락',
+  CONSTRAINT pk_orders PRIMARY KEY (order_id),
+  CONSTRAINT uk_orders_order_no UNIQUE (order_no),
+  INDEX idx_orders_buyer_created (buyer_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='주문 (결제 단위)';
 
 -- 스토어별 묶음배송비 (같은 스토어 상품끼리 배송비 1회)
-CREATE TABLE order_store_shipments (
-  id            BIGINT      NOT NULL AUTO_INCREMENT,
-  order_id      BIGINT      NOT NULL,
-  store_id      BIGINT      NOT NULL,
-  shipping_fee  BIGINT      NOT NULL,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_shipment (order_id, store_id),
-  CONSTRAINT fk_shipment_order FOREIGN KEY (order_id) REFERENCES orders (id)  -- 같은 서비스 안 FK는 OK
-);
+CREATE TABLE order_store_shipment (
+  order_store_shipment_id BIGINT NOT NULL AUTO_INCREMENT,
+  order_id                BIGINT NOT NULL,
+  store_id                BIGINT NOT NULL COMMENT 'store-service store.store_id (논리 참조)',
+  shipping_fee            BIGINT NOT NULL COMMENT '스토어 묶음 배송비 (원)',
+  created_at              DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at              DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  CONSTRAINT pk_order_store_shipment PRIMARY KEY (order_store_shipment_id),
+  CONSTRAINT uk_order_store_shipment_order_store UNIQUE (order_id, store_id),
+  CONSTRAINT fk_order_store_shipment_orders FOREIGN KEY (order_id) REFERENCES orders (order_id) ON DELETE RESTRICT  -- 같은 서비스 안 FK는 필수
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='주문의 스토어별 배송비';
 
 -- 상품주문 = 상태 관리 단위
-CREATE TABLE order_items (
-  id                BIGINT       NOT NULL AUTO_INCREMENT,
+CREATE TABLE order_item (
+  order_item_id     BIGINT       NOT NULL AUTO_INCREMENT,
   order_id          BIGINT       NOT NULL,
-  item_no           VARCHAR(24)  NOT NULL,              -- 상품주문번호
-  store_id          BIGINT       NOT NULL,              -- 판매자 주문 조회의 핵심 키
-  store_name        VARCHAR(100) NOT NULL,              -- 스냅샷
-  product_id        BIGINT       NOT NULL,
-  option_id         BIGINT       NOT NULL,
-  product_name      VARCHAR(200) NOT NULL,              -- 스냅샷
-  option_name       VARCHAR(200),                       -- 스냅샷 예: "아이보리 / L"
-  category_id       BIGINT       NOT NULL,              -- 스냅샷: 정산 수수료율 계산용
-  unit_price        BIGINT       NOT NULL,
-  quantity          INT          NOT NULL,
-  item_amt          BIGINT       NOT NULL,
-  status            VARCHAR(30)  NOT NULL,              -- PAYMENT_DONE / PREPARING / SHIPPING / DELIVERED / CONFIRMED / CANCEL_REQUESTED / CANCELLED ...
-  courier           VARCHAR(30),
-  tracking_no       VARCHAR(40),
-  shipped_at        DATETIME(6),
-  delivered_at      DATETIME(6),
-  confirmed_at      DATETIME(6),                        -- 정산 기준일
-  created_at        DATETIME(6)  NOT NULL,
-  updated_at        DATETIME(6)  NOT NULL,
-  version           BIGINT       NOT NULL DEFAULT 0,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_items_no (item_no),
-  KEY idx_items_store_status (store_id, status, created_at),   -- 판매자 주문관리 탭
-  KEY idx_items_autoconfirm (status, delivered_at),            -- 자동 구매확정 배치
-  CONSTRAINT fk_items_order FOREIGN KEY (order_id) REFERENCES orders (id)
-);
+  store_id          BIGINT       NOT NULL COMMENT 'store-service store.store_id (논리 참조) — 판매자 주문 조회의 핵심 키',
+  product_id        BIGINT       NOT NULL COMMENT 'product-service product.product_id (논리 참조)',
+  product_option_id BIGINT       NOT NULL COMMENT 'product-service product_option.product_option_id (논리 참조)',
+  category_id       BIGINT       NOT NULL COMMENT 'store-service category.category_id (논리 참조) — 정산 수수료율 계산용 스냅샷',
+  item_no           VARCHAR(24)  NOT NULL COMMENT '외부 노출 상품주문번호 예: 20261001-000123-01',
+  store_name        VARCHAR(100) NOT NULL COMMENT '주문 시점 스냅샷',
+  product_name      VARCHAR(200) NOT NULL COMMENT '주문 시점 스냅샷',
+  option_name       VARCHAR(200)          COMMENT '주문 시점 스냅샷 예: 아이보리 / L',
+  unit_price        BIGINT       NOT NULL COMMENT '단가 (원)',
+  quantity          INT UNSIGNED NOT NULL COMMENT '수량',
+  item_amt          BIGINT       NOT NULL COMMENT '상품주문 금액 (원)',
+  courier           VARCHAR(30)           COMMENT '택배사',
+  tracking_no       VARCHAR(40)           COMMENT '송장번호',
+  status            VARCHAR(30)  NOT NULL DEFAULT 'PAYMENT_DONE' COMMENT 'PAYMENT_DONE / PREPARING / SHIPPING / DELIVERED / CONFIRMED / CANCEL_REQUESTED / CANCELLED ...',
+  shipped_at        DATETIME(6)           COMMENT '발송 시각',
+  delivered_at      DATETIME(6)           COMMENT '배송 완료 시각',
+  confirmed_at      DATETIME(6)           COMMENT '구매확정 시각 — 정산 기준일',
+  created_at        DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at        DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  version           BIGINT       NOT NULL DEFAULT 0 COMMENT 'JPA @Version 낙관적 락',
+  CONSTRAINT pk_order_item PRIMARY KEY (order_item_id),
+  CONSTRAINT uk_order_item_item_no UNIQUE (item_no),
+  CONSTRAINT fk_order_item_orders FOREIGN KEY (order_id) REFERENCES orders (order_id) ON DELETE RESTRICT,
+  INDEX idx_order_item_store_status (store_id, status, created_at),   -- 판매자 주문관리 탭
+  INDEX idx_order_item_status_delivered (status, delivered_at),       -- 자동 구매확정 배치
+  INDEX idx_order_item_product (product_id)                           -- 다른 서비스 ID는 수동 인덱스
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='상품주문 (상태 관리 단위)';
 
--- 상태 변경 이력 (판매자 주문상세의 "처리 이력", 분쟁 대응)
-CREATE TABLE order_item_histories (
-  id            BIGINT      NOT NULL AUTO_INCREMENT,
-  order_item_id BIGINT      NOT NULL,
-  from_status   VARCHAR(30),
-  to_status     VARCHAR(30) NOT NULL,
-  actor_type    VARCHAR(10) NOT NULL,                   -- BUYER / SELLER / ADMIN / SYSTEM
-  actor_id      BIGINT,
-  reason        VARCHAR(300),
-  created_at    DATETIME(6) NOT NULL,
-  PRIMARY KEY (id),
-  KEY idx_hist_item (order_item_id, created_at)
-);
+-- 상태 변경 이력 (판매자 주문상세의 "처리 이력", 분쟁 대응) — INSERT-only라 created_at만
+CREATE TABLE order_item_history (
+  order_item_history_id BIGINT       NOT NULL AUTO_INCREMENT,
+  order_item_id         BIGINT       NOT NULL,
+  actor_id              BIGINT                COMMENT 'user-service users.user_id (논리 참조), SYSTEM이면 NULL',
+  from_status           VARCHAR(30)           COMMENT '변경 전 상태',
+  to_status             VARCHAR(30)  NOT NULL COMMENT '변경 후 상태',
+  actor_type            VARCHAR(10)  NOT NULL COMMENT 'BUYER / SELLER / ADMIN / SYSTEM',
+  reason                VARCHAR(300)          COMMENT '사유',
+  created_at            DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  CONSTRAINT pk_order_item_history PRIMARY KEY (order_item_history_id),
+  CONSTRAINT fk_order_item_history_order_item FOREIGN KEY (order_item_id) REFERENCES order_item (order_item_id) ON DELETE RESTRICT,
+  INDEX idx_order_item_history_item_created (order_item_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='상품주문 상태 변경 이력';
 
 -- 결제 (포트원 V2 테스트 채널, 07장). 결제 서비스를 따로 두지 않고 order 안에
-CREATE TABLE payments (
-  id             BIGINT       NOT NULL AUTO_INCREMENT,
-  order_id       BIGINT       NOT NULL,
-  payment_id     VARCHAR(64)  NOT NULL,                 -- 우리가 만들어 포트원에 넘기는 ID (예: pay-20261001-000123) = 멱등 키
-  amount         BIGINT       NOT NULL,                 -- 우리가 기대하는 금액 → 포트원 조회 결과와 비교
-  status         VARCHAR(20)  NOT NULL,                 -- READY / PAID / CANCELLED / FAILED
-  pg_tx_id       VARCHAR(100),                          -- 포트원 응답의 PG 거래 ID
-  method         VARCHAR(30),                           -- CARD / EASY_PAY ...
-  paid_at        DATETIME(6),
-  cancelled_at   DATETIME(6),
-  cancel_reason  VARCHAR(200),
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_pay_payment_id (payment_id),
-  KEY idx_pay_order (order_id)
-);
+CREATE TABLE payment (
+  payment_id         BIGINT       NOT NULL AUTO_INCREMENT,
+  order_id           BIGINT       NOT NULL,
+  portone_payment_id VARCHAR(64)  NOT NULL COMMENT '포트원 paymentId — 우리가 만들어 넘기는 값 예: pay-20261001-000123 = 멱등 키',
+  amount             BIGINT       NOT NULL COMMENT '기대 금액 (원) — 포트원 조회 결과와 비교',
+  pg_tx_id           VARCHAR(100)          COMMENT '포트원 응답의 PG 거래 ID',
+  method             VARCHAR(30)           COMMENT 'CARD / EASY_PAY ...',
+  cancel_reason      VARCHAR(200)          COMMENT '취소 사유',
+  status             VARCHAR(20)  NOT NULL DEFAULT 'READY' COMMENT 'READY / PAID / CANCELLED / FAILED',
+  paid_at            DATETIME(6)           COMMENT '결제 완료 시각',
+  cancelled_at       DATETIME(6)           COMMENT '결제 취소 시각',
+  created_at         DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at         DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  CONSTRAINT pk_payment PRIMARY KEY (payment_id),
+  CONSTRAINT uk_payment_portone_payment_id UNIQUE (portone_payment_id),
+  CONSTRAINT fk_payment_orders FOREIGN KEY (order_id) REFERENCES orders (order_id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='결제 (포트원)';
 
 -- Saga 진행 상태 (오케스트레이터의 기억)
-CREATE TABLE saga_instances (
-  saga_id      CHAR(36)    NOT NULL,                    -- UUID
-  saga_type    VARCHAR(30) NOT NULL,                    -- PLACE_ORDER / CANCEL_ORDER
-  order_id     BIGINT      NOT NULL,
-  current_step VARCHAR(30) NOT NULL,                    -- ORDER_CREATED / STOCK_RESERVED(=결제 대기) / PAYMENT_VERIFIED / DONE
-  status       VARCHAR(20) NOT NULL,                    -- STARTED / COMPENSATING / COMPLETED / COMPENSATED / FAILED
-  last_error   VARCHAR(500),
-  created_at   DATETIME(6) NOT NULL,
-  updated_at   DATETIME(6) NOT NULL,
-  PRIMARY KEY (saga_id),
-  KEY idx_saga_stuck (status, updated_at)               -- 멈춘 saga 복구 배치
-);
+CREATE TABLE saga_instance (
+  saga_instance_id BIGINT       NOT NULL AUTO_INCREMENT,
+  order_id         BIGINT       NOT NULL,
+  saga_id          CHAR(36)     NOT NULL COMMENT 'UUID — Saga 참여자 API의 멱등 키',
+  saga_type        VARCHAR(30)  NOT NULL COMMENT 'PLACE_ORDER / CANCEL_ORDER',
+  current_step     VARCHAR(30)  NOT NULL COMMENT 'ORDER_CREATED / STOCK_RESERVED(=결제 대기) / PAYMENT_VERIFIED / DONE',
+  last_error       VARCHAR(500)          COMMENT '마지막 실패 사유',
+  status           VARCHAR(20)  NOT NULL DEFAULT 'STARTED' COMMENT 'STARTED / COMPENSATING / COMPLETED / COMPENSATED / FAILED',
+  created_at       DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at       DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  CONSTRAINT pk_saga_instance PRIMARY KEY (saga_instance_id),
+  CONSTRAINT uk_saga_instance_saga_id UNIQUE (saga_id),
+  CONSTRAINT fk_saga_instance_orders FOREIGN KEY (order_id) REFERENCES orders (order_id) ON DELETE RESTRICT,
+  INDEX idx_saga_instance_status_updated (status, updated_at)          -- 멈춘 saga 복구 배치
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Saga 진행 상태';
 
 -- (선택) Transactional Outbox: 이벤트를 DB와 같은 트랜잭션으로 기록
-CREATE TABLE outbox_events (
-  id             BIGINT       NOT NULL AUTO_INCREMENT,
-  event_id       CHAR(36)     NOT NULL,
-  aggregate_type VARCHAR(30)  NOT NULL,                 -- ORDER / ORDER_ITEM
-  aggregate_id   VARCHAR(40)  NOT NULL,
-  event_type     VARCHAR(50)  NOT NULL,                 -- OrderPaid / OrderItemConfirmed ...
-  payload        JSON         NOT NULL,
-  status         VARCHAR(10)  NOT NULL DEFAULT 'NEW',   -- NEW / SENT
-  created_at     DATETIME(6)  NOT NULL,
-  sent_at        DATETIME(6),
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_outbox_event (event_id),
-  KEY idx_outbox_new (status, id)
-);</code></pre>
+CREATE TABLE outbox_event (
+  outbox_event_id BIGINT       NOT NULL AUTO_INCREMENT,
+  event_id        CHAR(36)     NOT NULL COMMENT 'UUID — 소비자 멱등 키',
+  aggregate_type  VARCHAR(30)  NOT NULL COMMENT 'ORDER / ORDER_ITEM',
+  aggregate_id    VARCHAR(40)  NOT NULL COMMENT '주문번호 또는 상품주문번호',
+  event_type      VARCHAR(50)  NOT NULL COMMENT 'OrderPaid / OrderItemConfirmed ...',
+  payload         JSON         NOT NULL COMMENT '이벤트 payload',
+  status          VARCHAR(10)  NOT NULL DEFAULT 'NEW' COMMENT 'NEW / SENT',
+  sent_at         DATETIME(6)           COMMENT 'SNS 발행 시각',
+  created_at      DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  CONSTRAINT pk_outbox_event PRIMARY KEY (outbox_event_id),
+  CONSTRAINT uk_outbox_event_event_id UNIQUE (event_id),
+  INDEX idx_outbox_event_status (status, outbox_event_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Transactional Outbox';</code></pre>
 <p>장바구니는 MySQL이 아니라 Redis(<code>cart:{userId}</code> 해시)에 둡니다(09장). 정산 수수료율은 주문에 복사하지 않고 <code>category_id</code>만 스냅샷으로 남긴 뒤, settlement-service가 집계 시점에 "구매확정일 기준 유효한 수수료율"을 store-service에서 받아 계산합니다(목업의 "수수료 변경 예약" 규칙 때문).</p>
 
 <h3>Saga가 필요한 곳 · 필요 없는 곳</h3>
@@ -901,7 +913,7 @@ CREATE TABLE outbox_events (
 public class PlaceOrderSaga {
 
     private final OrderTxService orderTx;           // 로컬 트랜잭션 메서드 모음 (@Transactional)
-    private final SagaStore sagaStore;              // saga_instances 기록 (각 호출이 짧은 트랜잭션)
+    private final SagaStore sagaStore;              // saga_instance 기록 (각 호출이 짧은 트랜잭션)
     private final ProductStockClient stockClient;   // product-service /internal 호출
     private final PortOneClient portOne;            // 포트원 결제 조회·취소 API (07장)
 
@@ -910,7 +922,7 @@ public class PlaceOrderSaga {
 
     // [요청 1] POST /api/orders — 주문서 제출
     public PrepareResult prepare(PlaceOrderCommand cmd) {
-        Order order = orderTx.createPending(cmd);                     // T1: 주문 PENDING + payments READY
+        Order order = orderTx.createPending(cmd);                     // T1: 주문 PENDING + payment READY
         SagaInstance saga = sagaStore.start(SagaType.PLACE_ORDER, order.getId());
         try {
             stockClient.reserve(new ReserveStockRequest(saga.getSagaId(), order.stockLines()));   // T2 (product)
@@ -972,7 +984,7 @@ public class StockReservationService {
             return;                                            // 같은 요청 재시도 → 이미 처리됨 (멱등)
         }
         for (StockLine line : lines) {
-            // UPDATE product_options SET stock = stock - :qty WHERE id = :id AND stock &gt;= :qty
+            // UPDATE product_option SET stock = stock - :qty WHERE product_option_id = :optionId AND stock &gt;= :qty
             int updated = optionRepo.decreaseStock(line.optionId(), line.quantity());
             if (updated == 0) {
                 throw new OutOfStockException(line.optionId()); // 트랜잭션 롤백 → 앞서 줄인 재고도 원복
@@ -1074,7 +1086,7 @@ class SagaRecoveryJob {
 <h3>결제 흐름</h3>
 <div class="tbl"><table>
 <tr><th>#</th><th>흐름</th><th>핵심</th></tr>
-<tr><td>1</td><td>브라우저 → <code>POST /api/orders</code> → order-service가 주문 PENDING, 재고 예약, <code>payments</code>에 READY 행과 <code>paymentId</code> 생성</td><td><b>금액은 서버가 계산</b>: product-service에서 현재 가격을 다시 받아 합산. 브라우저가 보낸 가격은 쓰지 않음</td></tr>
+<tr><td>1</td><td>브라우저 → <code>POST /api/orders</code> → order-service가 주문 PENDING, 재고 예약, <code>payment</code>에 READY 행과 <code>paymentId</code> 생성</td><td><b>금액은 서버가 계산</b>: product-service에서 현재 가격을 다시 받아 합산. 브라우저가 보낸 가격은 쓰지 않음</td></tr>
 <tr><td>2</td><td>브라우저가 포트원 SDK로 결제창 호출(<code>paymentId</code>, 금액)</td><td>테스트 채널이라 실제 출금 없음</td></tr>
 <tr><td>3</td><td>결제창 종료 → 브라우저 → <code>POST /api/orders/{orderNo}/payment</code></td><td>"성공했다"는 브라우저 말은 신호일 뿐</td></tr>
 <tr><td>4</td><td>order-service → 포트원 <code>GET /payments/{paymentId}</code>로 상태·금액 확인</td><td>상태 PAID + 금액 일치 → 주문 PAID / 불일치 → <b>포트원 취소 API로 즉시 환불</b> + 재고 해제</td></tr>
@@ -1135,7 +1147,7 @@ PortOneApi portOneApi(RestClient.Builder builder, @Value("${portone.api-secret}"
 <div class="box warn"><b class="t">포트원 연동에서 막히는 곳</b>
 <ul>
 <li><b>V1(아임포트) 자료와 섞지 않기.</b> 검색되는 블로그 다수가 V1(<code>IMP.request_pay</code>, <code>imp_uid</code>) 방식입니다. 이 프로젝트는 V2(<code>PortOne.requestPayment</code>, <code>paymentId</code>)로 통일하고, 요청 필드 이름은 포트원 개발자 문서(V2)를 기준으로 합니다.</li>
-<li>테스트 결제는 PG에 따라 당일 자동 취소될 수 있으므로, "포트원 콘솔의 결제 내역"이 아니라 <b>우리 DB의 payments 테이블</b>을 기준으로 정산합니다.</li>
+<li>테스트 결제는 PG에 따라 당일 자동 취소될 수 있으므로, "포트원 콘솔의 결제 내역"이 아니라 <b>우리 DB의 payment 테이블</b>을 기준으로 정산합니다.</li>
 <li>모바일 브라우저는 결제창이 리다이렉트 방식이라 <code>requestPayment</code>의 응답 대신 <code>redirectUrl</code>로 돌아옵니다. 완료 페이지에서도 [요청 2]를 호출하도록 만듭니다.</li>
 <li>실서비스(실결제) 전환은 사업자 등록과 PG 계약이 필요하므로 범위 밖(Won't)입니다.</li>
 </ul></div>
@@ -1316,17 +1328,17 @@ DynamoDB는 "접근 패턴을 먼저 정하고 키를 설계"합니다(Single Ta
 <pre><code>{
   "eventId": "6c1f0a6e-0b0e-4c5b-9a8b-2f3c8e7d1a10",   // 소비자 멱등 처리 키
   "eventType": "OrderItemConfirmed",
-  "occurredAt": "2026-10-21T09:12:33Z",                 // UTC
+  "occurredAt": "2026-10-21T09:12:33+09:00",            // 오프셋 포함 (Asia/Seoul)
   "aggregateId": "20261014-000123-01",
   "version": 1,
-  "payload": { "orderItemId": 5531, "storeId": 3, "categoryId": 1, "itemAmt": 59000, "confirmedAt": "2026-10-21T09:12:33Z" }
+  "payload": { "orderItemId": 5531, "storeId": 3, "categoryId": 1, "itemAmt": 59000, "confirmedAt": "2026-10-21T09:12:33+09:00" }
 }</code></pre>
 <div class="grid2">
 <div class="card"><h4>발행: 커밋된 뒤에만</h4>
 <p><b>1단계(기본)</b> — <code>@TransactionalEventListener(phase = AFTER_COMMIT)</code>에서 SNS로 발행. 롤백된 주문의 이벤트가 나가지 않습니다. 단, 커밋 직후 파드가 죽으면 이벤트가 유실될 수 있습니다.</p>
-<p><b>2단계(여유 시)</b> — Transactional Outbox: 같은 트랜잭션에서 <code>outbox_events</code>에 INSERT → 스케줄러가 2초마다 NEW를 읽어 SNS 발행 후 SENT. 유실이 없습니다.</p></div>
+<p><b>2단계(여유 시)</b> — Transactional Outbox: 같은 트랜잭션에서 <code>outbox_event</code>에 INSERT → 스케줄러가 2초마다 NEW를 읽어 SNS 발행 후 SENT. 유실이 없습니다.</p></div>
 <div class="card"><h4>소비: 멱등하게</h4>
-<p>SQS는 <b>최소 한 번</b> 전달이라 같은 메시지가 두 번 올 수 있습니다. 소비자는 <code>processed_events(event_id PK)</code>에 INSERT를 시도해 중복이면 건너뜁니다. 처리 중 예외가 나면 메시지를 삭제하지 않아 재시도되고, 3번 실패하면 DLQ로 갑니다.</p>
+<p>SQS는 <b>최소 한 번</b> 전달이라 같은 메시지가 두 번 올 수 있습니다. 소비자는 <code>processed_event(event_id PK)</code>에 INSERT를 시도해 중복이면 건너뜁니다. 처리 중 예외가 나면 메시지를 삭제하지 않아 재시도되고, 3번 실패하면 DLQ로 갑니다.</p>
 <p>Spring에서 SQS를 받을 때 Spring Cloud AWS의 Boot 4 호환 버전을 먼저 확인하고, 맞지 않으면 AWS SDK v2 <code>SqsClient</code> 롱폴링으로 직접 구현합니다.</p></div>
 </div>
 
@@ -1688,7 +1700,7 @@ export const useConfirmOrderItems = () =&gt; {
 <div class="box rec"><b class="t">프론트 배포: Vercel</b>
 nginx 컨테이너를 EKS에 올리는 방법도 있지만, 정적 파일은 Vercel이 무료이고 HTTPS·CDN·PR 미리보기를 기본 제공하며 클러스터 파드 예산을 쓰지 않습니다. React Router의 새로고침 404와 API 연결은 <code>vercel.json</code>의 rewrites로 해결합니다(05장). API 주소는 같은 도메인의 <code>/api</code>이므로 axios <code>baseURL</code>은 <code>/api</code> 하나면 됩니다.</div>
 <div class="box q"><b class="t">회의에서 정할 것</b>
-React 18 유지 vs 19 업그레이드(목업은 18, TanStack 라이브러리는 둘 다 지원) · 상태 코드·에러 응답 형식(RFC 9457 ProblemDetail 추천) · 페이지네이션 응답 형식(<code>{content, page, size, totalElements}</code>) · 날짜 표시(서버는 UTC ISO-8601, 화면은 KST).</div>
+React 18 유지 vs 19 업그레이드(목업은 18, TanStack 라이브러리는 둘 다 지원). 응답 형식(<code>ApiResponse</code> 봉투 · <code>PageResponse</code>)과 시간대(Asia/Seoul)는 확정 — 컨벤션 0-3.</div>
 </section>
 
 <!-- ============================================================ 15 백엔드 구조 -->
@@ -1767,7 +1779,7 @@ React 18 유지 vs 19 업그레이드(목업은 18, TanStack 라이브러리는 
     │   │   ├── OrderApplication.java
     │   │   ├── global/                         서비스 공통 (서비스 템플릿에서 복사)
     │   │   │   ├── config/                     JpaConfig · RedisConfig · ClientConfig(HTTP 클라이언트·타임아웃) · SchedulingConfig(ShedLock)
-    │   │   │   ├── error/                      ErrorCode · BusinessException · GlobalExceptionHandler(ProblemDetail)
+    │   │   │   ├── error/                      ErrorCode · BusinessException · GlobalExceptionHandler(ApiResponse.error())
     │   │   │   ├── auth/                       @CurrentUser · AuthUserArgumentResolver (게이트웨이가 넣은 X-User-* 헤더)
     │   │   │   └── event/                      EventEnvelope · SnsEventPublisher · ProcessedEvent(멱등)
     │   │   ├── cart/                           ── 도메인 1: 장바구니
@@ -1909,6 +1921,8 @@ COPY --from=builder /app/extracted/snapshot-dependencies/ ./
 # 자주 바뀌는 코드 레이어는 맨 마지막 (Dockerfile은 줄 끝 주석을 지원하지 않으므로 주석은 따로 한 줄에)
 COPY --from=builder /app/extracted/application/ ./
 USER spring
+# 컨테이너 기본 시간대는 UTC — DB · JDBC와 맞춰 Asia/Seoul로 고정
+ENV TZ=Asia/Seoul
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
 EXPOSE 8084
 ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]</code></pre>
@@ -1927,7 +1941,7 @@ ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]</code>
   application:
     name: order-service                      # 지표·로그의 app 이름이 됨
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:3306/orderdb?serverTimezone=UTC
+    url: jdbc:mysql://${DB_HOST:localhost}:3306/orderdb?connectionTimeZone=Asia/Seoul
     username: ${DB_USERNAME:order}          # 클러스터에서는 ESO가 만든 Secret → 환경 변수
     password: ${DB_PASSWORD:local-pass}
   jpa:
@@ -1992,7 +2006,8 @@ data:
   SETTLEMENT_SERVICE_URI: http://settlement-service:8085
   LOKI_URL: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
   ZIPKIN_ENDPOINT: http://zipkin.monitoring.svc.cluster.local:9411/api/v2/spans
-  AUTO_CONFIRM_AFTER: 2m                                 # 데모용 단축 (10장)</code></pre>
+  AUTO_CONFIRM_AFTER: 2m                                 # 데모용 단축 (10장)
+  TZ: Asia/Seoul                                         # JVM 시간대 — DB · JDBC와 함께 세 곳 모두 Asia/Seoul</code></pre>
 <p class="cap">deploy/helm/sesac-team1-app/values.yaml — 서비스별 항목 (CI는 tag 줄만 바꿈)</p>
 <pre><code>image:
   registry: &lt;ACCOUNT_ID&gt;.dkr.ecr.ap-northeast-2.amazonaws.com
@@ -2301,9 +2316,9 @@ Must를 먼저 끝까지 연결하는 것이 Should 여러 개보다 가치가 �
 <tr><th>#</th><th>안건</th><th>추천 기본값</th></tr>
 <tr><td>1</td><td>서비스 분할 · 업무 분장</td><td><b>최우선 안건.</b> 서비스 구성은 03장(기능 기준 5 + 게이트웨이). 인프라 담당(A·B·C)은 유지하고, 도메인은 03장 ②~④(난이도·숙련도·참고안)를 보고 배정. 입문자 멘토(페어)와 주문·결제 공동 리뷰어도 함께 지정</td></tr>
 <tr><td>2</td><td>API 경로 · 버전</td><td><code>/api/{자원}</code>, <code>/api/seller/**</code>, <code>/api/admin/**</code>, <code>/internal/**</code>. URL 버전(v1)은 생략</td></tr>
-<tr><td>3</td><td>응답 · 에러 형식</td><td>성공은 리소스 그대로(래퍼 없음), 에러는 RFC 9457 ProblemDetail + <code>code</code>(예: <code>ORDER_OUT_OF_STOCK</code>). 페이지는 <code>{content, page, size, totalElements}</code></td></tr>
-<tr><td>4</td><td>ID · 번호 규칙</td><td>PK는 BIGINT AUTO_INCREMENT, 외부 노출 번호는 별도(<code>20261001-000123</code>), sagaId·eventId는 UUID</td></tr>
-<tr><td>5</td><td>시간 · 금액</td><td>DB·API는 UTC(ISO-8601), 화면만 KST. 금액은 원 단위 <code>BIGINT</code>/<code>long</code>, 비율은 <code>DECIMAL(5,2)</code> / <code>BigDecimal</code>. 반올림 규칙(수수료는 원 단위 내림 등) 문서화</td></tr>
+<tr><td>3</td><td>응답 · 에러 형식</td><td><b>확정</b>: 모든 응답 <code>ApiResponse&lt;T&gt;</code> 봉투 <code>{ code, message, data }</code>, 에러 코드는 의미형(예: <code>ORDER_OUT_OF_STOCK</code>). 페이지는 <code>ApiResponse&lt;PageResponse&lt;T&gt;&gt;</code> — <code>{content, page, size, totalElements, totalPages, hasNext}</code></td></tr>
+<tr><td>4</td><td>ID · 번호 규칙</td><td>PK는 <code>{테이블}_id</code> 단일 BIGINT AUTO_INCREMENT, 외부 노출 번호는 별도(<code>20261001-000123</code>), sagaId·eventId는 UUID</td></tr>
+<tr><td>5</td><td>시간 · 금액</td><td><b>확정</b>: DB · JDBC · JVM 모두 Asia/Seoul, 서비스 밖으로 나가는 이벤트 시각만 오프셋 포함 ISO-8601. 금액은 원 단위 <code>BIGINT</code>/<code>long</code>, 비율은 <code>DECIMAL(5,2)</code> / <code>BigDecimal</code>. 반올림 규칙(수수료는 원 단위 내림 등) 문서화</td></tr>
 <tr><td>6</td><td>인증 세부</td><td>08장 (토큰 30분/14일, 저장 위치, 역할 3종)</td></tr>
 <tr><td>7</td><td>이벤트 수단 · 형식</td><td>SNS + SQS, 10장의 봉투 형식, 이벤트 이름은 과거형</td></tr>
 <tr><td>8</td><td>결제 · 배송</td><td>포트원 V2 테스트 채널(07장) · 콘솔 공용 계정 관리자 · 택배사 연동 없음: 송장 수기 입력 + 판매자 "배송완료" 버튼 + 스케줄러</td></tr>
@@ -2338,7 +2353,7 @@ Must를 먼저 끝까지 연결하는 것이 Should 여러 개보다 가치가 �
 <tr><td>시크릿 커밋</td><td>GitHub에 키 노출 → 계정 도용·과금</td><td>gitleaks, <code>.gitignore</code>, OIDC로 장기 키 자체를 없앰. 노출 시 즉시 키 비활성화</td></tr>
 <tr><td>삭제 순서 실수</td><td>destroy가 멈추거나 NLB·EBS가 남아 과금</td><td>학습 가이드 23장: ArgoCD 앱·Service(LoadBalancer)·PVC 먼저 삭제 → cluster → vpc 순</td></tr>
 <tr><td>Docker on WSL 메모리</td><td>로컬에서 서비스 여러 개 띄우면 멈춤</td><td><code>.wslconfig</code> memory 설정, 로컬은 자기 서비스 + DB만</td></tr>
-<tr><td>시간대 버그</td><td>구매확정·정산 주차가 하루 어긋남</td><td>UTC 저장, 주차 계산은 <code>Asia/Seoul</code> 명시, 테스트로 경계(일요일 23:59) 확인</td></tr>
+<tr><td>시간대 버그</td><td>구매확정·정산 주차가 하루 어긋남</td><td>DB · JDBC · JVM 모두 <code>Asia/Seoul</code> 고정(컨테이너 기본은 UTC라 <code>TZ</code> 누락 주의), 주차 계산도 <code>Asia/Seoul</code>, 테스트로 경계(일요일 23:59) 확인</td></tr>
 <tr><td>인프라 담당자 병목</td><td>A가 바빠서 다른 사람이 기다림</td><td>1주차 산출물 목록과 날짜를 미리 공유, 기다리는 동안은 docker compose + MSW로 개발</td></tr>
 <tr><td>숙련도 차이</td><td>입문자가 막혀 일정 지연, 경험자에게 작업 쏠림</td><td>0주차 입문 트랙(17장), 페어 · 멘토 지정, good-first-issue, 작은 PR, 30분 규칙</td></tr>
 <tr><td>포트원 V1/V2 혼동</td><td>블로그 코드(<code>IMP.request_pay</code>)가 동작 안 함</td><td>V2 공식 문서만 참고, 07장 흐름 고정</td></tr>

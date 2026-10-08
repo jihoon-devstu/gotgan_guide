@@ -157,7 +157,7 @@ export default function HomePage() {
       <section className="home-block">
         <h2>회의 전에 볼 것</h2>
         <ul className="quick">
-          <li><Link to="/convention#c0-3"><b>컨벤션 0-3</b>스펙과 달라지는 8가지 — 결정 칸이 있는 회의록용 표</Link></li>
+          <li><Link to="/convention#c0-3"><b>컨벤션 0-3</b>확정 컨벤션 요약 — 회의에서 결정한 8가지</Link></li>
           <li><Link to="/guideline#s3"><b>가이드라인 03</b>업무 분장 판단 자료 — 숙련도 · 난이도 · 참고안</Link></li>
           <li><Link to="/guideline#s15"><b>가이드라인 18</b>팀 회의 안건 — 결정할 것과 추천 기본값</Link></li>
           <li><Link to="/spec#s5"><b>스펙 06</b>P0 완료 기준 — 4주차까지 완주할 E2E 시나리오</Link></li>

@@ -373,17 +373,18 @@ svg .ah2{fill:var(--point)}
 </ul></div>
 <div class="box"><h4>응답 · 에러</h4>
 <ul class="b">
-  <li>성공: 리소스 그대로 (래퍼 없음)</li>
-  <li>에러: RFC 9457 ProblemDetail + <code>code</code> (예: <code>ORDER_OUT_OF_STOCK</code>)</li>
-  <li>페이지: <code>{content, page, size, totalElements}</code></li>
+  <li>모든 응답: <code>ApiResponse&lt;T&gt;</code> 봉투 <code>{ code, message, data }</code> — 성공은 <code>code: "SUCCESS"</code></li>
+  <li>에러: 같은 봉투 + 의미형 <code>code</code> (예: <code>ORDER_OUT_OF_STOCK</code>), <code>data: null</code></li>
+  <li>페이지: <code>ApiResponse&lt;PageResponse&lt;T&gt;&gt;</code> — <code>{content, page, size, totalElements, totalPages, hasNext}</code></li>
   <li>검증 실패 400 · 인증 401 · 권한·소유권 403 · 없음 404 · 상태 충돌 409</li>
 </ul></div>
 <div class="box"><h4>데이터</h4>
 <ul class="b">
-  <li>PK: BIGINT AUTO_INCREMENT</li>
+  <li>PK: <code>{테이블}_id</code> 단일 BIGINT AUTO_INCREMENT</li>
   <li>외부 번호: 주문 <code>20261001-000123</code>, 상품주문 <code>…-01</code></li>
   <li>sagaId · eventId: UUID</li>
-  <li>시간: UTC 저장 · ISO-8601 응답 · 화면만 KST</li>
+  <li>시간: DB · JDBC · JVM 모두 Asia/Seoul · 서비스 밖으로 나가는 이벤트 시각만 오프셋 포함 ISO-8601</li>
+  <li>생성 · 수정 시각: DB가 <code>DEFAULT</code> · <code>ON UPDATE</code>로 기록, 엔티티는 <code>@Generated</code>로 읽기만 (JPA Auditing 사용 안 함)</li>
   <li>금액: 원 단위 <code>long</code>/BIGINT, 비율 <code>BigDecimal</code>/DECIMAL(5,2)</li>
   <li>다른 서비스 데이터: ID만 참조 + 필요한 값 스냅샷</li>
 </ul></div>
@@ -407,10 +408,10 @@ svg .ah2{fill:var(--point)}
     │   ├── common/                          서비스 공통 (서비스 템플릿에서 복사)
     │   │   ├── config/                      JpaConfig · RedisConfig · RestClientConfig(타임아웃) · SchedulingConfig(ShedLock) · WebConfig · SwaggerConfig
     │   │   ├── exception/                   ErrorCode(인터페이스) · CommonErrorCode · BusinessException · GlobalExceptionHandler
-    │   │   ├── util/                        DateTimeUtils(UTC↔KST · 주차) · MoneyUtils · OrderNoGenerator
+    │   │   ├── util/                        DateTimeUtils(주차 · 날짜 경계) · MoneyUtils · OrderNoGenerator
     │   │   ├── auth/                        @CurrentUser · AuthUser · CurrentUserArgumentResolver (X-User-* 헤더)
     │   │   ├── event/                       EventEnvelope · SnsEventPublisher · ProcessedEvent(멱등)
-    │   │   └── entity/                      BaseTimeEntity (createdAt · updatedAt)
+    │   │   └── entity/                      BaseTimeEntity (createdAt · updatedAt — DB 생성 · @Generated)
     │   ├── cart/                            ─ 도메인별 패키지
     │   │   ├── controller/                  CartController
     │   │   ├── service/                     CartService
@@ -454,16 +455,16 @@ svg .ah2{fill:var(--point)}
 <div class="tbl"><table>
 <tr><th>common/</th><th>담는 것</th></tr>
 <tr><td><code>config</code></td><td>JPA · Redis · RestClient(연결 2s · 읽기 3s) · 스케줄러 + ShedLock · WebMvc(리졸버 등록) · Swagger · AWS SDK 클라이언트 Bean</td></tr>
-<tr><td><code>exception</code></td><td><code>ErrorCode</code> 인터페이스 · <code>CommonErrorCode</code>(400 · 401 · 403 · 404 · 500) · <code>BusinessException</code> · <code>GlobalExceptionHandler</code>(<code>@RestControllerAdvice</code> → ProblemDetail + <code>code</code>)</td></tr>
+<tr><td><code>exception</code></td><td><code>ErrorCode</code> 인터페이스 · <code>CommonErrorCode</code>(400 · 401 · 403 · 404 · 500) · <code>BusinessException</code> · <code>GlobalExceptionHandler</code>(<code>@RestControllerAdvice</code> → <code>ApiResponse.error()</code>)</td></tr>
 <tr><td><code>util</code></td><td>상태 없는 static 유틸 — 시간대 · 주차 계산 · 금액 반올림 · 번호 생성</td></tr>
 <tr><td><code>auth</code></td><td>게이트웨이가 넣은 <code>X-User-Id</code> · <code>X-User-Roles</code> · <code>X-Store-Id</code>를 <code>AuthUser</code>로 변환</td></tr>
 <tr><td><code>event</code></td><td>이벤트 봉투 · SNS 발행 · 수신 멱등 테이블 (이벤트를 쓰는 서비스만)</td></tr>
-<tr><td><code>entity</code></td><td><code>BaseTimeEntity</code> — 생성 · 수정 시각 공통 컬럼 (<code>@MappedSuperclass</code>)</td></tr>
+<tr><td><code>entity</code></td><td><code>BaseTimeEntity</code> — 생성 · 수정 시각 공통 컬럼 (<code>@MappedSuperclass</code> · DB가 기록, <code>@Generated</code>로 읽기)</td></tr>
 </table></div>
 <ul class="b">
   <li>의존 방향: <code>controller → service → repository · client</code>, entity는 service · repository에서만</li>
-  <li>예외 흐름: service가 도메인 예외 throw → <code>common/exception/GlobalExceptionHandler</code>가 ProblemDetail로 변환 (도메인별 핸들러 만들지 않음)</li>
-  <li>도메인 ErrorCode 예: <code>OrderErrorCode.OUT_OF_STOCK(409, "ORDER_OUT_OF_STOCK", "재고가 부족합니다")</code></li>
+  <li>예외 흐름: service가 도메인 예외 throw → <code>common/exception/GlobalExceptionHandler</code>가 <code>ApiResponse.error()</code>로 변환 (도메인별 핸들러 만들지 않음)</li>
+  <li>도메인 ErrorCode 예: <code>OrderErrorCode.ORDER_OUT_OF_STOCK(CONFLICT, "재고가 부족합니다")</code> — 코드 문자열 = enum 상수명</li>
   <li>도메인 패키지끼리는 service를 통해서만 참조 (예: payment.service → order.service), 다른 도메인의 repository 직접 사용 금지</li>
 </ul>
 
@@ -535,6 +536,11 @@ svg .ah2{fill:var(--point)}
 └── src/
     ├── main.jsx
     ├── app/                 router.jsx · providers.jsx(QueryClient) · layouts/(Shop · MyPage · Console)
+    ├── pages/               ─ 라우트 1개 = 페이지 파일 1개, features 조립만
+    │   ├── shop/            메인 · 상품 · 스토어 · 장바구니 · 주문서 · 로그인 · 입점 신청
+    │   ├── mypage/          주문 · 클레임 · 회원정보 · 배송지
+    │   ├── seller/          판매자센터
+    │   └── admin/           관리자
     ├── shared/
     │   ├── api/client.js    axios 인스턴스 · 인터셉터
     │   ├── ui/              목업 components (Pill · Price · Modal · Kpi · BarChart …)
@@ -549,7 +555,6 @@ svg .ah2{fill:var(--point)}
     │   └── settlement/      판매자 정산 · 관리자 정산
     │       ├── api.js       API 함수 + queryKey 팩토리
     │       ├── hooks.js     useQuery / useMutation 래핑
-    │       ├── pages/
     │       └── components/
     └── mocks/               MSW handlers (기능별) · fixtures (목업 data 이동)</code></pre>
 
@@ -805,12 +810,12 @@ services/{service}/src/main/resources/
 <div class="tbl"><table>
 <tr><th>경로</th><th>역할</th></tr>
 <tr><td><code>{Service}Application.java</code></td><td>Spring Boot 시작점 (<code>@SpringBootApplication</code>)</td></tr>
-<tr><td><code>common/config/</code></td><td>Bean · 설정 클래스 — JPA Auditing · Redis · RestClient 타임아웃 · 스케줄러 + ShedLock · 리졸버 등록 · Swagger · AWS SDK 클라이언트</td></tr>
-<tr><td><code>common/exception/</code></td><td><code>ErrorCode</code> · <code>CommonErrorCode</code> · <code>BusinessException</code> · <code>GlobalExceptionHandler</code>(모든 예외 → ProblemDetail)</td></tr>
+<tr><td><code>common/config/</code></td><td>Bean · 설정 클래스 — Redis · RestClient 타임아웃 · 스케줄러 + ShedLock · 리졸버 등록 · Swagger · AWS SDK 클라이언트</td></tr>
+<tr><td><code>common/exception/</code></td><td><code>ErrorCode</code> · <code>CommonErrorCode</code> · <code>BusinessException</code> · <code>GlobalExceptionHandler</code>(모든 예외 → <code>ApiResponse.error()</code>)</td></tr>
 <tr><td><code>common/util/</code></td><td>시간대 · 주차 · 금액 · 번호 생성 static 유틸</td></tr>
 <tr><td><code>common/auth/</code></td><td><code>@CurrentUser</code> · <code>AuthUser</code> · 헤더 → 사용자 변환 리졸버</td></tr>
 <tr><td><code>common/event/</code></td><td>이벤트 봉투 · SNS 발행기 · SQS 수신기 · 멱등 처리 테이블 entity</td></tr>
-<tr><td><code>common/entity/</code></td><td><code>BaseTimeEntity</code> — createdAt · updatedAt</td></tr>
+<tr><td><code>common/entity/</code></td><td><code>BaseTimeEntity</code> — createdAt · updatedAt (DB 생성 · <code>@Generated</code>)</td></tr>
 <tr><td><code>{domain}/controller/</code></td><td>REST 엔드포인트 — 구매자 · 판매자(<code>Seller*Controller</code>) · 관리자(<code>Admin*Controller</code>) · 내부(<code>Internal*Controller</code>)</td></tr>
 <tr><td><code>{domain}/service/</code></td><td>업무 로직 · 트랜잭션 · Saga · 스케줄러 · 이벤트 리스너</td></tr>
 <tr><td><code>{domain}/dto/</code></td><td>요청 · 응답 record</td></tr>
@@ -854,7 +859,8 @@ services/{service}/src/main/resources/
 <tr><td><code>src/shared/lib/</code></td><td>포맷 · 날짜 유틸</td></tr>
 <tr><td><code>src/features/{feature}/api.js</code></td><td>해당 기능 API 함수 + queryKey 팩토리</td></tr>
 <tr><td><code>src/features/{feature}/hooks.js</code></td><td>useQuery · useMutation 래핑 훅</td></tr>
-<tr><td><code>src/features/{feature}/pages/</code> · <code>components/</code></td><td>화면 · 화면 전용 컴포넌트</td></tr>
+<tr><td><code>src/pages/{shop · mypage · seller · admin}/</code></td><td>화면 — 라우트 1개 = 파일 1개, features 조립만 (해당 도메인 담당자가 생성 · 수정)</td></tr>
+<tr><td><code>src/features/{feature}/components/</code></td><td>기능 전용 컴포넌트</td></tr>
 <tr><td><code>src/features/auth/authStore.js</code></td><td>Zustand — accessToken · 사용자 정보</td></tr>
 <tr><td><code>src/mocks/</code></td><td>MSW handlers · fixtures (백엔드 없이 개발)</td></tr>
 </table></div>
@@ -971,7 +977,7 @@ services/{service}/src/main/resources/
 <h3 id="d-usr"><span class="n">USR</span>회원 · 인증</h3>
 <div class="dom-head">
   <div>서비스</div><div>user-service · gateway-service</div>
-  <div>저장소</div><div>userdb(users · user_roles · addresses) · Redis(<code>rt:{userId}:{tokenId}</code>)</div>
+  <div>저장소</div><div>userdb(users · user_role · address) · Redis(<code>refresh:{userId}:{tokenId}</code>)</div>
   <div>화면</div><div>/login · /signup · /mypage/profile · /mypage/addresses · /admin/users</div>
 </div>
 <div class="tbl req"><table>
@@ -986,7 +992,7 @@ services/{service}/src/main/resources/
 <tr data-p="1"><td class="id">USR-08</td><td><b>배송지 관리</b><span class="tag">구매자</span></td><td><ul><li>등록 · 수정 · 삭제 · 기본 배송지 지정</li><li>주문서에서 선택 (없으면 주문서 직접 입력)</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">/api/users/me/addresses<br>/mypage/addresses</td></tr>
 <tr data-p="1"><td class="id">USR-09</td><td><b>회원 목록 · 상세</b><span class="tag">관리자</span></td><td><ul><li>검색(이름 · 이메일) · 상태 필터 · 서버 페이징</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">GET /api/admin/users<br>/admin/users</td></tr>
 <tr data-p="1"><td class="id">USR-10</td><td><b>회원 이용정지 · 해제</b><span class="tag">관리자</span></td><td><ul><li>사유 필수 · 정지 시 Refresh 전부 삭제(재로그인 차단)</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">PATCH /api/admin/users/{id}/status</td></tr>
-<tr data-p="2"><td class="id">USR-11</td><td><b>Access Token 즉시 무효화</b><span class="tag">시스템</span></td><td><ul><li>로그아웃 시 jti 차단 목록(Redis, 남은 시간 TTL)</li></ul></td><td><span class="p p2">P2</span></td><td class="ref">Redis <code>bl:{jti}</code></td></tr>
+<tr data-p="2"><td class="id">USR-11</td><td><b>Access Token 즉시 무효화</b><span class="tag">시스템</span></td><td><ul><li>로그아웃 시 jti 차단 목록(Redis, 남은 시간 TTL)</li></ul></td><td><span class="p p2">P2</span></td><td class="ref">Redis <code>blacklist:{jti}</code></td></tr>
 <tr data-p="2"><td class="id">USR-12</td><td><b>포인트 · 쿠폰</b><span class="tag">구매자</span></td><td><ul><li>목업 마이페이지 쿠폰/포인트 · 주문서 할인 영역</li></ul></td><td><span class="p p2">P2</span></td><td class="ref">/mypage/coupons</td></tr>
 <tr data-p="x"><td class="id">USR-13</td><td><b>회원 등급 · 휴면 분리보관 · 소셜 로그인</b></td><td><ul><li>범위 밖</li></ul></td><td><span class="p px">제외</span></td><td class="ref">—</td></tr>
 </table></div>
@@ -995,7 +1001,7 @@ services/{service}/src/main/resources/
 <h3 id="d-str"><span class="n">STR</span>입점 · 스토어 · 카테고리</h3>
 <div class="dom-head">
   <div>서비스</div><div>store-service</div>
-  <div>저장소</div><div>storedb(store_applications · application_documents · stores · categories · category_commissions · processed_events) · S3 seller-docs</div>
+  <div>저장소</div><div>storedb(store_application · application_document · store · category · category_commission · processed_event) · S3 seller-docs</div>
   <div>화면</div><div>/seller/apply · /stores · /store/:id · /seller/store · /admin/applications · /admin/stores · /admin/categories</div>
 </div>
 <div class="tbl req"><table>
@@ -1014,7 +1020,7 @@ services/{service}/src/main/resources/
 <tr data-p="1"><td class="id">STR-12</td><td><b>스토어 목록 · 스토어 홈</b><span class="tag">구매자</span></td><td><ul><li>운영중 스토어만 · 소개 · 스토어 내 카테고리 탭(상품은 product API)</li><li>휴면 스토어 접근 시 안내 화면</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">GET /api/stores · /api/stores/{id}</td></tr>
 <tr data-p="1"><td class="id">STR-13</td><td><b>스토어 상태 변경</b><span class="tag">판매자</span><span class="tag">관리자</span></td><td><ul><li>판매자 휴면 신청 · 관리자 정지/해제(사유)</li><li><code>StoreStatusChanged</code> 발행 → 상품 숨김 · 정산 보류</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">PATCH /api/admin/stores/{id}/status</td></tr>
 <tr data-p="1"><td class="id">STR-14</td><td><b>스토어 관리 목록 · 상세</b><span class="tag">관리자</span></td><td><ul><li>상태 필터 · 상세(기본 정보 · 상태 이력)</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">/admin/stores</td></tr>
-<tr data-p="2"><td class="id">STR-15</td><td><b>수수료 변경 예약 · 스토어별 개별 수수료</b><span class="tag">관리자</span></td><td><ul><li>공지 7일 후 적용, 적용 시작일 이력 관리</li><li>스토어 단위 수수료 덮어쓰기</li></ul></td><td><span class="p p2">P2</span></td><td class="ref">category_commissions</td></tr>
+<tr data-p="2"><td class="id">STR-15</td><td><b>수수료 변경 예약 · 스토어별 개별 수수료</b><span class="tag">관리자</span></td><td><ul><li>공지 7일 후 적용, 적용 시작일 이력 관리</li><li>스토어 단위 수수료 덮어쓰기</li></ul></td><td><span class="p p2">P2</span></td><td class="ref">category_commission</td></tr>
 <tr data-p="2"><td class="id">STR-16</td><td><b>입점 심사 결과 메일</b><span class="tag">시스템</span></td><td><ul><li>승인 · 보완 · 반려 이벤트 → 알림 Lambda → SES</li></ul></td><td><span class="p p2">P2</span></td><td class="ref">NTF</td></tr>
 <tr data-p="x"><td class="id">STR-17</td><td><b>판매자 페널티 · 신규 스토어 메인 노출</b></td><td><ul><li>범위 밖</li></ul></td><td><span class="p px">제외</span></td><td class="ref">—</td></tr>
 </table></div>
@@ -1023,13 +1029,13 @@ services/{service}/src/main/resources/
 <h3 id="d-prd"><span class="n">PRD</span>상품</h3>
 <div class="dom-head">
   <div>서비스</div><div>product-service · (Lambda product-thumbnail)</div>
-  <div>저장소</div><div>productdb(products · product_options · product_images · stock_reservations) · Redis 캐시 · S3 product-images</div>
+  <div>저장소</div><div>productdb(product · product_option · product_image · stock_reservation) · Redis 캐시 · S3 product-images</div>
   <div>화면</div><div>/ · /products · /products/:id · /seller/products · /seller/products/new · /seller/products/:id/edit</div>
 </div>
 <div class="tbl req"><table>
 <tr><th>ID</th><th>요구사항</th><th>상세</th><th>우선</th><th>화면 · API</th></tr>
 <tr data-p="0"><td class="id">PRD-01</td><td><b>상품 등록 · 수정</b><span class="tag">판매자</span></td><td><ul><li>상품명 · 카테고리(소분류) · 판매가 · 할인가 · 상세 설명 · 판매 상태</li><li>본인 스토어 상품만 수정 (storeId 소유권 검사)</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">POST/PUT /api/seller/products<br>/seller/products/new</td></tr>
-<tr data-p="0"><td class="id">PRD-02</td><td><b>조합형 옵션 · 재고</b><span class="tag">판매자</span></td><td><ul><li>옵션 그룹 최대 2개(예: 색상 × 사이즈) → 조합별 추가금 · 재고</li><li>재고 0 → 품절 표시</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">product_options</td></tr>
+<tr data-p="0"><td class="id">PRD-02</td><td><b>조합형 옵션 · 재고</b><span class="tag">판매자</span></td><td><ul><li>옵션 그룹 최대 2개(예: 색상 × 사이즈) → 조합별 추가금 · 재고</li><li>재고 0 → 품절 표시</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">product_option</td></tr>
 <tr data-p="0"><td class="id">PRD-03</td><td><b>상품 이미지 업로드</b><span class="tag">판매자</span></td><td><ul><li>presigned PUT → S3 <code>originals/</code> · 최대 5장 · 대표 1장</li><li>썸네일 Lambda가 <code>thumbs/</code> 생성, 목록은 썸네일 사용</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">POST /api/seller/products/images/presign</td></tr>
 <tr data-p="0"><td class="id">PRD-04</td><td><b>판매자 상품 목록</b><span class="tag">판매자</span></td><td><ul><li>상태 필터(판매중 · 품절 · 판매중지) · 검색 · 서버 페이징</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">GET /api/seller/products<br>/seller/products</td></tr>
 <tr data-p="0"><td class="id">PRD-05</td><td><b>판매중지 · 재개 · 삭제</b><span class="tag">판매자</span></td><td><ul><li>삭제는 소프트 삭제 (주문 스냅샷 보존)</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">PATCH /api/seller/products/{id}/status</td></tr>
@@ -1051,7 +1057,7 @@ services/{service}/src/main/resources/
 <h3 id="d-ord"><span class="n">ORD</span>장바구니 · 주문 · 결제</h3>
 <div class="dom-head">
   <div>서비스</div><div>order-service (+ product · store 내부 호출, 포트원 V2)</div>
-  <div>저장소</div><div>orderdb(orders · order_items · order_store_shipments · payments · saga_instances · outbox_events) · Redis(<code>cart:{userId}</code>)</div>
+  <div>저장소</div><div>orderdb(orders · order_item · order_store_shipment · payment · saga_instance · outbox_event) · Redis(<code>cart:{userId}</code>)</div>
   <div>화면</div><div>/cart · /checkout · /order/complete · /mypage/orders · /mypage/orders/:id</div>
 </div>
 <div class="tbl req"><table>
@@ -1067,7 +1073,7 @@ services/{service}/src/main/resources/
 <tr data-p="0"><td class="id">ORD-09</td><td><b>OrderPaid 발행</b><span class="tag">시스템</span></td><td><ul><li>커밋 후 발행 · 주문번호 · 주문자 이름/이메일 · 금액 · 상품 요약 포함</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">SNS order-events</td></tr>
 <tr data-p="1"><td class="id">ORD-10</td><td><b>포트원 웹훅</b><span class="tag">시스템</span></td><td><ul><li>서명 검증 → ORD-06과 같은 조회 · 검증 (브라우저 미복귀 대비)</li><li>게이트웨이 permitAll</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">POST /api/payments/webhook</td></tr>
 <tr data-p="1"><td class="id">ORD-11</td><td><b>결제완료 단계 취소</b><span class="tag">구매자</span></td><td><ul><li>상품주문 단위 즉시 취소 → 포트원 부분 취소 → 재고 복원 → CANCELLED</li><li>포트원 실패 시 재고 복원하지 않고 재시도 대기</li><li><code>OrderItemCancelled</code> 발행</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">POST /api/order-items/{id}/cancel</td></tr>
-<tr data-p="2"><td class="id">ORD-12</td><td><b>Transactional Outbox</b><span class="tag">시스템</span></td><td><ul><li>이벤트를 같은 트랜잭션에 기록 → 2초 주기 발행</li></ul></td><td><span class="p p2">P2</span></td><td class="ref">outbox_events</td></tr>
+<tr data-p="2"><td class="id">ORD-12</td><td><b>Transactional Outbox</b><span class="tag">시스템</span></td><td><ul><li>이벤트를 같은 트랜잭션에 기록 → 2초 주기 발행</li></ul></td><td><span class="p p2">P2</span></td><td class="ref">outbox_event</td></tr>
 <tr data-p="x"><td class="id">ORD-13</td><td><b>실결제 · 무통장 · 부분 결제수단 혼합</b></td><td><ul><li>사업자 · PG 계약 필요 → 범위 밖</li></ul></td><td><span class="p px">제외</span></td><td class="ref">—</td></tr>
 </table></div>
 
@@ -1075,7 +1081,7 @@ services/{service}/src/main/resources/
 <h3 id="d-dlv"><span class="n">DLV</span>배송 · 구매확정 · 클레임</h3>
 <div class="dom-head">
   <div>서비스</div><div>order-service</div>
-  <div>저장소</div><div>orderdb(order_items · order_item_histories)</div>
+  <div>저장소</div><div>orderdb(order_item · order_item_history)</div>
   <div>화면</div><div>/seller/orders · /seller/orders/:lineId · /seller/claims · /mypage/orders · /mypage/claim/:lineId</div>
 </div>
 <div class="tbl req"><table>
@@ -1098,12 +1104,12 @@ services/{service}/src/main/resources/
 <h3 id="d-stl"><span class="n">STL</span>정산</h3>
 <div class="dom-head">
   <div>서비스</div><div>settlement-service · (Lambda settlement-report)</div>
-  <div>저장소</div><div>settlementdb(settlement_items · settlements · payouts · processed_events · shedlock)</div>
+  <div>저장소</div><div>settlementdb(settlement_item · settlement · payout · processed_event · shedlock)</div>
   <div>화면</div><div>/seller/settlements · /admin/settlements</div>
 </div>
 <div class="tbl req"><table>
 <tr><th>ID</th><th>요구사항</th><th>상세</th><th>우선</th><th>화면 · API</th></tr>
-<tr data-p="0"><td class="id">STL-01</td><td><b>정산 대상 적재</b><span class="tag">시스템</span></td><td><ul><li><code>OrderItemConfirmed</code> 소비 → settlement_items 저장</li><li>eventId 멱등 · 실패 3회 DLQ</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">SQS 소비</td></tr>
+<tr data-p="0"><td class="id">STL-01</td><td><b>정산 대상 적재</b><span class="tag">시스템</span></td><td><ul><li><code>OrderItemConfirmed</code> 소비 → settlement_item 저장</li><li>eventId 멱등 · 실패 3회 DLQ</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">SQS 소비</td></tr>
 <tr data-p="0"><td class="id">STL-02</td><td><b>주간 정산 집계</b><span class="tag">시스템</span><span class="tag">관리자</span></td><td><ul><li>지난주 월~일(KST) 구매확정분 → 스토어별 정산서</li><li>매주 월 03:00 + 관리자 "지금 집계" 버튼</li><li>스토어 × 주차 UNIQUE → 두 번 실행해도 1건</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">POST /api/admin/settlements/aggregate</td></tr>
 <tr data-p="0"><td class="id">STL-03</td><td><b>지급액 계산</b><span class="tag">시스템</span></td><td><ul><li>매출 − 환불 − 판매수수료(카테고리별) − 결제수수료 2.2%</li><li>수수료율은 store-service에서 조회 · 원 단위 내림</li><li>계산 단위 테스트 필수</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">05장 정산 규칙</td></tr>
 <tr data-p="0"><td class="id">STL-04</td><td><b>관리자 정산 목록</b><span class="tag">관리자</span></td><td><ul><li>주차 선택 · 스토어별 매출 · 수수료 · 지급액 · 상태 · 합계 행</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">GET /api/admin/settlements?week=<br>/admin/settlements</td></tr>
@@ -1156,7 +1162,7 @@ services/{service}/src/main/resources/
 <tr data-p="0"><td class="id">NFR-05</td><td><b>안정성</b></td><td><ul><li>서비스 간 호출 타임아웃(2s/3s) · 실패 시 보상</li><li>graceful shutdown · startup/readiness/liveness probe 분리</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">product 0개 상태 주문 → 정상 실패 응답</td></tr>
 <tr data-p="0"><td class="id">NFR-06</td><td><b>가용성</b></td><td><ul><li>gateway 레플리카 2 · 두 AZ 분산</li><li>파드 1개 삭제 중에도 요청 처리</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">파드 삭제 시연</td></tr>
 <tr data-p="0"><td class="id">NFR-07</td><td><b>관측성</b></td><td><ul><li>전 서비스 RED 지표 · JSON 로그 · traceId 전파</li><li>Lambda 로그 Grafana에서 조회</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">요청 1건 traceId로 전 구간 추적</td></tr>
-<tr data-p="0"><td class="id">NFR-08</td><td><b>데이터</b></td><td><ul><li>스키마 변경은 Flyway만 · 서비스 간 JOIN · FK 금지</li><li>UTC 저장 · 금액 정수</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">계정별 스키마 권한</td></tr>
+<tr data-p="0"><td class="id">NFR-08</td><td><b>데이터</b></td><td><ul><li>스키마 변경은 Flyway만 · 서비스 간 JOIN · FK 금지</li><li>Asia/Seoul 저장 · 금액 정수</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">계정별 스키마 권한</td></tr>
 <tr data-p="1"><td class="id">NFR-09</td><td><b>성능</b></td><td><ul><li>상품 목록 · 상세 p95 500ms 이하 (dev, 동시 사용자 50 기준)</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">k6 · Grafana p95</td></tr>
 <tr data-p="1"><td class="id">NFR-10</td><td><b>UI</b></td><td><ul><li>375px 가로 스크롤 없음 · 목업 디자인 원칙 유지 · 주요 버튼 키보드 접근</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">모바일 뷰 점검</td></tr>
 <tr data-p="1"><td class="id">NFR-11</td><td><b>비용</b></td><td><ul><li>Budgets 알림 · 야간 노드 0 · 발표 후 전체 destroy</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">Cost Explorer 태그</td></tr>
@@ -1168,7 +1174,7 @@ services/{service}/src/main/resources/
 <h2><span class="n">05</span>업무 규칙</h2>
 <p class="lead">목업 README의 규칙을 백엔드 기준으로 정리. 상태 이름은 코드 enum 값을 함께 표기합니다.</p>
 
-<h3>상품주문 상태 <span class="n">order_items.status</span></h3>
+<h3>상품주문 상태 <span class="n">order_item.status</span></h3>
 <div class="tbl"><table>
 <tr><th>상태</th><th>enum</th><th>바꾸는 주체</th><th>다음 상태</th><th>구매자 가능 액션</th></tr>
 <tr><td>결제완료</td><td><code>PAYMENT_DONE</code></td><td>시스템 (결제 검증)</td><td>배송준비 (판매자 발주확인)</td><td>즉시 취소</td></tr>
@@ -1181,7 +1187,7 @@ services/{service}/src/main/resources/
 <ul class="b">
   <li>주문(<code>orders.status</code>): <code>PENDING</code>(결제 대기) → <code>PAID</code> / <code>FAILED</code> · 전체 취소 시 <code>CANCELLED</code></li>
   <li>주문 = 결제 단위, 상품주문 = 스토어 · 상품 단위 — 상태는 상품주문 단위로 관리</li>
-  <li>모든 상태 변경은 <code>order_item_histories</code>에 기록 (주체 · 시각 · 사유)</li>
+  <li>모든 상태 변경은 <code>order_item_history</code>에 기록 (주체 · 시각 · 사유)</li>
 </ul>
 
 <h3>입점 신청 · 스토어 상태</h3>
@@ -1225,7 +1231,7 @@ services/{service}/src/main/resources/
   <li>스토어 단위 묶음배송: 같은 스토어 상품은 배송비 1회 · 스토어별 무료배송 기준</li>
   <li>결제 금액 = Σ(상품 금액) + Σ(스토어별 배송비) − 할인(P2)</li>
   <li>결제 대기 15분 초과 시 재고 해제 · 주문 FAILED</li>
-  <li>포트원 테스트 결제는 실제 출금 없음 · 정산 기준은 우리 DB의 payments</li>
+  <li>포트원 테스트 결제는 실제 출금 없음 · 정산 기준은 우리 DB의 payment</li>
 </ul>
 
 <h3>시간 기준 (운영값 / 데모값)</h3>

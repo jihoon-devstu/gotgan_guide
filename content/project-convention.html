@@ -508,7 +508,7 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);</code></pre>
 <div class="tbl"><table>
 <tr><th>스키마</th><th>테이블</th></tr>
 <tr><td>userdb</td><td><code>users</code>(<code>point_balance</code> · <code>grade</code> 포함) · <code>address</code> · <code>point_history</code></td></tr>
-<tr><td>storedb</td><td><code>store_application</code> · <code>application_document</code> · <code>application_history</code> · <code>store</code> · <code>store_status_history</code> · <code>processed_event</code> · <code>shedlock</code></td></tr>
+<tr><td>storedb</td><td><code>store_application</code> · <code>application_document</code> · <code>application_history</code> · <code>store</code> · <code>store_status_history</code> · <code>shedlock</code></td></tr>
 <tr><td>productdb</td><td><code>category</code> · <code>product</code> · <code>product_option</code> · <code>product_image</code> · <code>stock_reservation</code> · <code>processed_event</code></td></tr>
 <tr><td>orderdb</td><td><code>cart_item</code>(장바구니 원본 — Redis <code>cart:{userId}</code>는 캐시) · <code>orders</code> · <code>order_item</code> · <code>order_store_shipment</code> · <code>order_item_history</code> · <code>order_claim</code> · <code>saga_instance</code> · <code>outbox_event</code> · <code>shedlock</code></td></tr>
 <tr><td>paymentdb</td><td><code>payment</code> · <code>payment_cancel</code></td></tr>

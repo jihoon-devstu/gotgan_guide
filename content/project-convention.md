@@ -568,7 +568,7 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 | 스키마 | 테이블 |
 |---|---|
 | userdb | `users`(`point_balance` · `grade` 포함) · `address` · `point_history` |
-| storedb | `store_application` · `application_document` · `store` · `processed_event` · `shedlock` |
+| storedb | `store_application` · `application_document` · `application_history` · `store` · `store_status_history` · `processed_event` · `shedlock` |
 | productdb | `category` · `product` · `product_option` · `product_image` · `stock_reservation` · `processed_event` |
 | orderdb | `cart_item`(장바구니 원본 — Redis `cart:{userId}`는 캐시) · `orders` · `order_item` · `order_store_shipment` · `order_item_history` · `order_claim` · `saga_instance` · `outbox_event` · `shedlock` |
 | paymentdb | `payment` · `payment_cancel` |

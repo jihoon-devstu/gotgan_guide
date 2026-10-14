@@ -946,7 +946,7 @@ done</code></pre>
 <div class="tbl"><table>
 <tr><th>서비스</th><th>MySQL 스키마 (테이블)</th><th>그 외 저장소</th></tr>
 <tr><td>user</td><td>userdb: users(<code>point_balance</code> · <code>grade</code> 포함), address, point_history</td><td>—</td></tr>
-<tr><td>store</td><td>storedb: store_application, application_document, store, processed_event, shedlock</td><td>S3: 입점 서류</td></tr>
+<tr><td>store</td><td>storedb: store_application, application_document, application_history, store, store_status_history, processed_event, shedlock</td><td>S3: 입점 서류</td></tr>
 <tr><td>product</td><td>productdb: category, product, product_option, product_image, stock_reservation, processed_event</td><td>S3: 상품 이미지</td></tr>
 <tr><td>order</td><td>orderdb: <b>아래 예시</b> — cart_item(장바구니 원본), orders, order_item, order_store_shipment, order_item_history, order_claim, saga_instance, outbox_event, shedlock</td><td>Redis: 장바구니 <b>캐시</b> <code>cart:{userId}</code>(원본은 cart_item, 09장)</td></tr>
 <tr><td>payment</td><td>paymentdb: payment, payment_cancel (07장)</td><td>—</td></tr>

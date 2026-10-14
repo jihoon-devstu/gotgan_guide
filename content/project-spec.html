@@ -1212,7 +1212,7 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 <div class="tbl req"><table>
 <tr><th>ID</th><th>요구사항</th><th>상세</th><th>우선</th><th>화면 · API</th></tr>
 <tr data-p="0"><td class="id">CAT-01</td><td><b>카테고리 트리 공개 조회</b><span class="tag">전체</span></td><td><ul><li>상위/하위 2단계 트리 · 사용 중인 카테고리만</li><li>상품 등록 · 입점 신청(희망 카테고리) · 쇼핑몰 탐색이 모두 이 API 하나를 사용</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">GET /api/categories</td></tr>
-<tr data-p="0"><td class="id">CAT-02</td><td><b>카테고리 관리</b><span class="tag">관리자</span></td><td><ul><li>생성 · 이름 수정 · 정렬 순서 · 사용 중지 (상품이 있는 카테고리는 삭제 대신 사용 중지)</li><li>admin-service → product <code>/internal/categories</code></li></ul></td><td><span class="p p0">P0</span></td><td class="ref">GET/POST/PUT /api/admin/categories<br>→ /internal/categories</td></tr>
+<tr data-p="0"><td class="id">CAT-02</td><td><b>카테고리 관리</b><span class="tag">관리자</span></td><td><ul><li>생성 · 이름 수정 · 정렬 순서 · 사용 중지 (삭제 없음 — 사용 중지 <code>is_active = FALSE</code>만. store 희망 카테고리 · settlement 수수료가 category_id를 논리 참조하므로)</li><li>admin-service → product <code>/internal/categories</code></li></ul></td><td><span class="p p0">P0</span></td><td class="ref">GET/POST/PUT /api/admin/categories<br>→ /internal/categories</td></tr>
 <tr data-p="0"><td class="id">CAT-03</td><td><b>상품 등록 시 카테고리 검증</b><span class="tag">시스템</span></td><td><ul><li>하위 카테고리만 지정 가능 · product가 자기 DB로 검증 (다른 서비스 호출 없음 → 장애 전파 없음)</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">PRD-01 검증</td></tr>
 <tr data-p="x"><td class="id">CAT-04</td><td><b>3단계 이상 카테고리 · 판매자 카테고리 생성</b></td><td><ul><li>범위 밖 — 카테고리는 관리자가 정의, 판매자는 선택만</li></ul></td><td><span class="p px">제외</span></td><td class="ref">—</td></tr>
 </table></div>

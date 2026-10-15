@@ -1290,31 +1290,36 @@ public class PlaceOrderSaga {
 public class StockReservationService {
 
     private final ProductOptionRepository productOptionRepository;
-    private final StockReservationRepository stockReservationRepository;
+    private final StockHistoryRepository stockHistoryRepository;   // 재고 원장: RESERVE · RELEASE · RESTORE, UK (type, ref_key, product_option_id)
 
     @Transactional
     public void reserve(String sagaId, List&lt;StockLine&gt; lines) {
-        if (stockReservationRepository.existsBySagaId(sagaId)) {
+        if (stockHistoryRepository.existsByTypeAndRefKey(StockHistoryType.RESERVE, sagaId)) {
             return;                                            // 같은 요청 재시도 → 이미 처리됨 (멱등)
         }
         for (StockLine line : lines) {
             // UPDATE product_option SET stock = stock - :qty WHERE product_option_id = :optionId AND stock &gt;= :qty
             int updated = productOptionRepository.decreaseStock(line.productOptionId(), line.quantity());
             if (updated == 0) {
-                // 트랜잭션 롤백 → 앞서 줄인 재고도 원복. 409 STOCK_INSUFFICIENT 로 응답
+                // 트랜잭션 롤백 → 앞서 줄인 재고 · 원장 행도 원복. 409 STOCK_INSUFFICIENT 로 응답
                 throw new StockException(StockErrorCode.STOCK_INSUFFICIENT);
             }
+            stockHistoryRepository.save(StockHistory.reserve(sagaId, line));
         }
-        stockReservationRepository.save(StockReservation.of(sagaId, lines));
     }
 
     @Transactional
     public void release(String sagaId) {
-        stockReservationRepository.findBySagaIdAndReleasedFalse(sagaId).ifPresent(reservation -&gt; {
-            reservation.lines().forEach(l -&gt; productOptionRepository.increaseStock(l.productOptionId(), l.quantity()));
-            reservation.markReleased();                        // 두 번 호출돼도 한 번만 복원
+        if (stockHistoryRepository.existsByTypeAndRefKey(StockHistoryType.RELEASE, sagaId)) {
+            return;                                            // 두 번 호출돼도 한 번만 복원
+        }
+        stockHistoryRepository.findByTypeAndRefKey(StockHistoryType.RESERVE, sagaId).forEach(r -&gt; {
+            productOptionRepository.increaseStock(r.getProductOptionId(), r.getQuantity());
+            stockHistoryRepository.save(StockHistory.release(sagaId, r));
         });
     }
+    // 취소 · 반품 복원(restore)도 같은 모양 — ref_key = "claim-{claimId}", type = RESTORE
+    // 판매자가 상품 수정에서 재고를 직접 바꾸는 것은 원장에 기록하지 않음 (Saga 멱등 전용)
 }</code></pre>
 <p>user-service의 포인트 사용 · 환원(<code>/internal/points/use</code> · <code>/internal/points/refund</code>)도 같은 모양입니다: <code>point_history</code>에 sagaId가 있으면 그냥 반환, 잔액은 <code>UPDATE users SET point_balance = point_balance - :p WHERE user_id = :id AND point_balance &gt;= :p</code>, 0행이면 <code>throw new PointException(PointErrorCode.POINT_INSUFFICIENT)</code>.</p>
 <div class="box rec"><b class="t">분산 락(Redis) 없이 재고 동시성 해결</b>

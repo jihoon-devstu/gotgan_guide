@@ -568,8 +568,8 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 | 스키마 | 테이블 |
 |---|---|
 | userdb | `users`(`point_balance` · `grade` 포함) · `address` · `point_history` |
-| storedb | `store_application` · `application_document` · `store` · `processed_event` · `shedlock` |
-| productdb | `category` · `product` · `product_option` · `product_image` · `stock_reservation` · `processed_event` |
+| storedb | `store_application` · `application_document` · `application_history` · `store` · `store_status_history` · `shedlock` |
+| productdb | `category` · `product` · `product_option` · `product_image` · `stock_history` · `processed_event` |
 | orderdb | `cart_item`(장바구니 원본 — Redis `cart:{userId}`는 캐시) · `orders` · `order_item` · `order_store_shipment` · `order_item_history` · `order_claim` · `saga_instance` · `outbox_event` · `shedlock` |
 | paymentdb | `payment` · `payment_cancel` |
 | reviewdb | `review` · `review_image` · `review_eligibility` · `product_inquiry` · `processed_event` |
@@ -974,7 +974,7 @@ function AdminStoreListPage() {
 | DLQ | 큐 이름 + `-dlq` | `sesac-gojigi-settlement-order-events-dlq` |
 | IAM 역할 (IRSA) | `sesac-gojigi-{service}-irsa` | `sesac-gojigi-order-irsa` |
 | SSM 파라미터 | `/sesac-gojigi/dev/{종류}/{이름}` | `/sesac-gojigi/dev/sqs/notification-queue-arn` |
-| S3 버킷 | `sesac-gojigi-{용도}-{계정ID 끝 4자리}` (전역 유일) | `sesac-gojigi-images-1234`(prefix `products/` · `reviews/`) · `sesac-gojigi-seller-docs-1234` · `sesac-gojigi-reports-1234` · `sesac-gojigi-log-archive-1234` |
+| S3 버킷 | `sesac-gojigi-{용도}-{계정ID 끝 4자리}` (전역 유일) | `sesac-gojigi-images-1234`(prefix `products/` · `reviews/` · `stores/`) · `sesac-gojigi-seller-docs-1234` · `sesac-gojigi-reports-1234` · `sesac-gojigi-log-archive-1234` |
 | DynamoDB | `sesac-gojigi-{용도}` | `sesac-gojigi-notifications` · `sesac-gojigi-settlement-reports` (그 외 테이블 없음) |
 
 ### 5-2. Terraform

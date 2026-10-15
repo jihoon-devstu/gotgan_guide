@@ -762,7 +762,7 @@ data "aws_iam_roles" "github_actions" {
 <tr><td><b><code>app/</code></b></td><td>
 <ul>
 <li><b>NLB용 EIP 2개</b> (05장 DuckDNS)</li>
-<li>S3 4개: <code>sesac-gojigi-images-{계정4}</code>(<code>products/</code> · <code>reviews/</code> — 이 두 prefix만 <b>공개 읽기</b>, 업로드는 presigned PUT · 10/14), <code>seller-docs</code>, <code>reports</code>, <code>log-archive</code>(90일 후 Glacier)</li>
+<li>S3 4개: <code>sesac-gojigi-images-{계정4}</code>(<code>products/</code> · <code>reviews/</code> · <code>stores/</code> — 이 세 prefix만 <b>공개 읽기</b>, 업로드는 presigned PUT · 10/14), <code>seller-docs</code>, <code>reports</code>, <code>log-archive</code>(90일 후 Glacier)</li>
 <li>SNS 토픽 3개: <code>sesac-gojigi-store-events</code> · <code>order-events</code> · <code>settlement-events</code> + 구독자별 SQS 큐 · DLQ(3회)</li>
 <li>DynamoDB 2개: <code>sesac-gojigi-notifications</code> · <code>sesac-gojigi-settlement-reports</code></li>
 <li>SES 이메일 자격 증명</li>
@@ -782,7 +782,7 @@ data "aws_iam_roles" "github_actions" {
 <div class="grid2">
 <div class="card"><h4>서비스별 IRSA 권한 (최소 권한)</h4>
 <ul>
-<li>store-service: <code>s3:PutObject/GetObject</code>(seller-docs, presign용), <code>sns:Publish</code>(store-events)</li>
+<li>store-service: <code>s3:PutObject/GetObject</code>(seller-docs, presign용), <code>s3:PutObject</code>(images/stores/, 대표 이미지 presign용), <code>sns:Publish</code>(store-events)</li>
 <li>product-service: <code>s3:PutObject</code>(images/<code>products/</code>, presign용), SQS 수신(store-events 구독 큐)</li>
 <li>review-service: <code>s3:PutObject</code>(images/<code>reviews/</code>, presign용), SQS 수신(order-events 구독 큐)</li>
 <li>order-service: <code>sns:Publish</code>(order-events)</li>
@@ -946,8 +946,8 @@ done</code></pre>
 <div class="tbl"><table>
 <tr><th>서비스</th><th>MySQL 스키마 (테이블)</th><th>그 외 저장소</th></tr>
 <tr><td>user</td><td>userdb: users(<code>point_balance</code> · <code>grade</code> 포함), address, point_history</td><td>—</td></tr>
-<tr><td>store</td><td>storedb: store_application, application_document, store, processed_event, shedlock</td><td>S3: 입점 서류</td></tr>
-<tr><td>product</td><td>productdb: category, product, product_option, product_image, stock_reservation, processed_event</td><td>S3: 상품 이미지</td></tr>
+<tr><td>store</td><td>storedb: store_application, application_document, application_history, store, store_status_history, shedlock</td><td>S3: 입점 서류</td></tr>
+<tr><td>product</td><td>productdb: category, product, product_option, product_image, stock_history, processed_event</td><td>S3: 상품 이미지</td></tr>
 <tr><td>order</td><td>orderdb: <b>아래 예시</b> — cart_item(장바구니 원본), orders, order_item, order_store_shipment, order_item_history, order_claim, saga_instance, outbox_event, shedlock</td><td>Redis: 장바구니 <b>캐시</b> <code>cart:{userId}</code>(원본은 cart_item, 09장)</td></tr>
 <tr><td>payment</td><td>paymentdb: payment, payment_cancel (07장)</td><td>—</td></tr>
 <tr><td>review</td><td>reviewdb: review, review_image, review_eligibility, product_inquiry, processed_event</td><td>S3: 리뷰 사진</td></tr>
@@ -1290,31 +1290,36 @@ public class PlaceOrderSaga {
 public class StockReservationService {
 
     private final ProductOptionRepository productOptionRepository;
-    private final StockReservationRepository stockReservationRepository;
+    private final StockHistoryRepository stockHistoryRepository;   // 재고 원장: RESERVE · RELEASE · RESTORE, UK (type, ref_key, product_option_id)
 
     @Transactional
     public void reserve(String sagaId, List&lt;StockLine&gt; lines) {
-        if (stockReservationRepository.existsBySagaId(sagaId)) {
+        if (stockHistoryRepository.existsByTypeAndRefKey(StockHistoryType.RESERVE, sagaId)) {
             return;                                            // 같은 요청 재시도 → 이미 처리됨 (멱등)
         }
         for (StockLine line : lines) {
             // UPDATE product_option SET stock = stock - :qty WHERE product_option_id = :optionId AND stock &gt;= :qty
             int updated = productOptionRepository.decreaseStock(line.productOptionId(), line.quantity());
             if (updated == 0) {
-                // 트랜잭션 롤백 → 앞서 줄인 재고도 원복. 409 STOCK_INSUFFICIENT 로 응답
+                // 트랜잭션 롤백 → 앞서 줄인 재고 · 원장 행도 원복. 409 STOCK_INSUFFICIENT 로 응답
                 throw new StockException(StockErrorCode.STOCK_INSUFFICIENT);
             }
+            stockHistoryRepository.save(StockHistory.reserve(sagaId, line));
         }
-        stockReservationRepository.save(StockReservation.of(sagaId, lines));
     }
 
     @Transactional
     public void release(String sagaId) {
-        stockReservationRepository.findBySagaIdAndReleasedFalse(sagaId).ifPresent(reservation -&gt; {
-            reservation.lines().forEach(l -&gt; productOptionRepository.increaseStock(l.productOptionId(), l.quantity()));
-            reservation.markReleased();                        // 두 번 호출돼도 한 번만 복원
+        if (stockHistoryRepository.existsByTypeAndRefKey(StockHistoryType.RELEASE, sagaId)) {
+            return;                                            // 두 번 호출돼도 한 번만 복원
+        }
+        stockHistoryRepository.findByTypeAndRefKey(StockHistoryType.RESERVE, sagaId).forEach(r -&gt; {
+            productOptionRepository.increaseStock(r.getProductOptionId(), r.getQuantity());
+            stockHistoryRepository.save(StockHistory.release(sagaId, r));
         });
     }
+    // 취소 · 반품 복원(restore)도 같은 모양 — ref_key = "claim-{claimId}", type = RESTORE
+    // 판매자가 상품 수정에서 재고를 직접 바꾸는 것은 원장에 기록하지 않음 (Saga 멱등 전용)
 }</code></pre>
 <p>user-service의 포인트 사용 · 환원(<code>/internal/points/use</code> · <code>/internal/points/refund</code>)도 같은 모양입니다: <code>point_history</code>에 sagaId가 있으면 그냥 반환, 잔액은 <code>UPDATE users SET point_balance = point_balance - :p WHERE user_id = :id AND point_balance &gt;= :p</code>, 0행이면 <code>throw new PointException(PointErrorCode.POINT_INSUFFICIENT)</code>.</p>
 <div class="box rec"><b class="t">분산 락(Redis) 없이 재고 동시성 해결</b>
@@ -3502,11 +3507,11 @@ spec:
 <p class="cap">gotgan-config/infra/terraform/app/ 이 만드는 자원</p>
 <div class="tbl"><table>
 <tr><th>파일</th><th>자원</th></tr>
-<tr><td><code>s3.tf</code></td><td>버킷 4개: <code>sesac-gojigi-images-{계정4}</code>(prefix <code>products/</code> · <code>reviews/</code>, presigned 업로드) · <code>sesac-gojigi-seller-docs-{계정4}</code> · <code>sesac-gojigi-reports-{계정4}</code> · <code>sesac-gojigi-log-archive-{계정4}</code>(90일 후 Glacier 수명주기)</td></tr>
+<tr><td><code>s3.tf</code></td><td>버킷 4개: <code>sesac-gojigi-images-{계정4}</code>(prefix <code>products/</code> · <code>reviews/</code> · <code>stores/</code>, presigned 업로드) · <code>sesac-gojigi-seller-docs-{계정4}</code> · <code>sesac-gojigi-reports-{계정4}</code> · <code>sesac-gojigi-log-archive-{계정4}</code>(90일 후 Glacier 수명주기)</td></tr>
 <tr><td><code>sns_sqs.tf</code></td><td>토픽 3개: <code>sesac-gojigi-store-events</code> · <code>sesac-gojigi-order-events</code> · <code>sesac-gojigi-settlement-events</code><br>구독자별 큐 + DLQ(3회, <code>-dlq</code>), SNS 필터 정책(<b>본문 <code>eventType</code></b> 기준, raw delivery — 발행 측은 메시지 속성 불필요)으로 필요한 이벤트만:<br>store-events → <code>sesac-gojigi-user-store-events</code> · <code>-product-store-events</code> · <code>-settlement-store-events</code> · <code>-notification-store-events</code><br>order-events → <code>sesac-gojigi-user-order-events</code> · <code>-review-order-events</code> · <code>-settlement-order-events</code> · <code>-notification-order-events</code><br>settlement-events → <code>sesac-gojigi-report-settlement-events</code></td></tr>
 <tr><td><code>dynamodb.tf</code></td><td>테이블 2개: <code>sesac-gojigi-notifications</code>(알림 멱등 · 이력) · <code>sesac-gojigi-settlement-reports</code>(명세서 발송 이력 — PK <code>STORE#{storeId}</code> · SK <code>SETTLEMENT#{settlementId}</code>, 조건부 쓰기로 재발송 방지)</td></tr>
 <tr><td><code>ses.tf</code></td><td>발신 도메인/주소 인증 (샌드박스, 수신자도 인증)</td></tr>
-<tr><td><code>irsa.tf</code> → <b>cluster/</b>로 이동(10/13: 신뢰 정책이 그날의 OIDC 공급자를 가리켜 클러스터와 함께 재생성)</td><td><code>sesac-gojigi-{service}-irsa</code>: user(sqs) · store(sns · s3 seller-docs) · product(sqs · s3 images) · order(sns) · review(sqs · s3 images) · settlement(sqs · sns · s3 reports). grafana(CloudWatch 읽기)는 박지연이 <code>cluster/irsa_grafana.tf</code>로. gateway · payment · admin은 없음. <code>kms:Decrypt</code>는 없음(KMS 미사용)</td></tr>
+<tr><td><code>irsa.tf</code> → <b>cluster/</b>로 이동(10/13: 신뢰 정책이 그날의 OIDC 공급자를 가리켜 클러스터와 함께 재생성)</td><td><code>sesac-gojigi-{service}-irsa</code>: user(sqs) · store(sns · s3 seller-docs · s3 images/stores) · product(sqs · s3 images) · order(sns) · review(sqs · s3 images) · settlement(sqs · sns · s3 reports). grafana(CloudWatch 읽기)는 박지연이 <code>cluster/irsa_grafana.tf</code>로. gateway · payment · admin은 없음. <code>kms:Decrypt</code>는 없음(KMS 미사용)</td></tr>
 <tr><td><code>ssm.tf</code> · <code>eip.tf</code></td><td>Lambda가 읽을 ARN(<code>/sesac-gojigi/dev/...</code>) · 게이트웨이 NLB용 EIP</td></tr>
 </table></div>
 <div class="box warn"><b class="t">Terraform에는 비밀 값을 쓰지 않기</b>

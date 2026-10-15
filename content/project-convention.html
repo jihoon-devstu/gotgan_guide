@@ -508,8 +508,8 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);</code></pre>
 <div class="tbl"><table>
 <tr><th>스키마</th><th>테이블</th></tr>
 <tr><td>userdb</td><td><code>users</code>(<code>point_balance</code> · <code>grade</code> 포함) · <code>address</code> · <code>point_history</code></td></tr>
-<tr><td>storedb</td><td><code>store_application</code> · <code>application_document</code> · <code>store</code> · <code>processed_event</code> · <code>shedlock</code></td></tr>
-<tr><td>productdb</td><td><code>category</code> · <code>product</code> · <code>product_option</code> · <code>product_image</code> · <code>stock_reservation</code> · <code>processed_event</code></td></tr>
+<tr><td>storedb</td><td><code>store_application</code> · <code>application_document</code> · <code>application_history</code> · <code>store</code> · <code>store_status_history</code> · <code>shedlock</code></td></tr>
+<tr><td>productdb</td><td><code>category</code> · <code>product</code> · <code>product_option</code> · <code>product_image</code> · <code>stock_history</code> · <code>processed_event</code></td></tr>
 <tr><td>orderdb</td><td><code>cart_item</code>(장바구니 원본 — Redis <code>cart:{userId}</code>는 캐시) · <code>orders</code> · <code>order_item</code> · <code>order_store_shipment</code> · <code>order_item_history</code> · <code>order_claim</code> · <code>saga_instance</code> · <code>outbox_event</code> · <code>shedlock</code></td></tr>
 <tr><td>paymentdb</td><td><code>payment</code> · <code>payment_cancel</code></td></tr>
 <tr><td>reviewdb</td><td><code>review</code> · <code>review_image</code> · <code>review_eligibility</code> · <code>product_inquiry</code> · <code>processed_event</code></td></tr>
@@ -770,7 +770,7 @@ function AdminStoreListPage() {
 <tr><td>DLQ</td><td>큐 이름 + <code>-dlq</code></td><td><code>sesac-gojigi-settlement-order-events-dlq</code></td></tr>
 <tr><td>IAM 역할 (IRSA)</td><td><code>sesac-gojigi-{service}-irsa</code></td><td><code>sesac-gojigi-order-irsa</code></td></tr>
 <tr><td>SSM 파라미터</td><td><code>/sesac-gojigi/dev/{종류}/{이름}</code></td><td><code>/sesac-gojigi/dev/sqs/notification-queue-arn</code></td></tr>
-<tr><td>S3 버킷</td><td><code>sesac-gojigi-{용도}-{계정ID 끝 4자리}</code> (전역 유일)</td><td><code>sesac-gojigi-images-1234</code>(prefix <code>products/</code> · <code>reviews/</code>) · <code>sesac-gojigi-seller-docs-1234</code> · <code>sesac-gojigi-reports-1234</code> · <code>sesac-gojigi-log-archive-1234</code></td></tr>
+<tr><td>S3 버킷</td><td><code>sesac-gojigi-{용도}-{계정ID 끝 4자리}</code> (전역 유일)</td><td><code>sesac-gojigi-images-1234</code>(prefix <code>products/</code> · <code>reviews/</code> · <code>stores/</code>) · <code>sesac-gojigi-seller-docs-1234</code> · <code>sesac-gojigi-reports-1234</code> · <code>sesac-gojigi-log-archive-1234</code></td></tr>
 <tr><td>DynamoDB</td><td><code>sesac-gojigi-{용도}</code></td><td><code>sesac-gojigi-notifications</code> · <code>sesac-gojigi-settlement-reports</code> (그 외 테이블 없음)</td></tr>
 </table></div>
 <h3 id="c5-2"><span class="n">5-2</span>Terraform</h3>

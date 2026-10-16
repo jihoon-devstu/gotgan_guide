@@ -2730,7 +2730,7 @@ class SagaMetrics {
 <p>관리자 화면에 별도 "시스템 상태" 페이지는 만들지 않고 Grafana 대시보드 하나로 보여줍니다. 시연 때는 kiosk 모드(<code>?kiosk</code>)로 전체 화면에 띄웁니다. 수집에 <b>kube-state-metrics</b>(필수)가 필요하고, 패널은 Prometheus <code>up</code>과 kube-state-metrics 지표만으로 만듭니다 — blackbox exporter는 쓰지 않습니다(10/13 3차, 04장 파드 예산 포함). 입구 생존은 gateway 파드 2개의 <code>up</code> · Ready로 봅니다.</p>
 <div class="tbl"><table>
 <tr><th>패널</th><th>형태</th><th>쿼리 (예)</th><th>보이는 것</th></tr>
-<tr><td>서비스별 가용 상태 (9개 + Keycloak · MySQL · Redis)</td><td>Stat (서비스마다 타일 1개)</td><td><code>kube_deployment_status_replicas_available{namespace="sesac-gojigi"} / kube_deployment_spec_replicas{namespace="sesac-gojigi"}</code></td><td>1 = 초록, 0~1 = 노랑(일부만 살아 있음 · 롤링 중), 0 = 빨강</td></tr>
+<tr><td>서비스별 가용 상태 (9개 + Keycloak · MySQL · Redis)</td><td>Stat (서비스마다 타일 1개)</td><td>업무 서비스 · Keycloak(Deployment): <code>kube_deployment_status_replicas_available{namespace="sesac-gojigi"} / kube_deployment_spec_replicas{namespace="sesac-gojigi"}</code><br>MySQL · Redis(StatefulSet): <code>kube_statefulset_status_replicas_ready{namespace="sesac-gojigi"} / kube_statefulset_replicas{namespace="sesac-gojigi"}</code> — Deployment 지표에는 나오지 않는다</td><td>1 = 초록, 0~1 = 노랑(일부만 살아 있음 · 롤링 중), 0 = 빨강</td></tr>
 <tr><td>수집 대상 생존</td><td><b>State timeline</b> (최근 30분)</td><td><code>up{namespace="sesac-gojigi"}</code></td><td>죽었다 살아나는 구간이 시간축 위에 빨강 → 초록 띠로 보임</td></tr>
 <tr><td>파드 Ready</td><td>State timeline</td><td><code>kube_pod_status_ready{namespace="sesac-gojigi", condition="true"}</code></td><td>롤링 배포 때 새 파드가 Ready가 된 뒤 옛 파드가 빠지는 순서</td></tr>
 <tr><td>파드 재시작 수</td><td>Stat</td><td><code>increase(kube_pod_container_status_restarts_total{namespace="sesac-gojigi"}[10m])</code></td><td>0 = 초록, 1 이상 = 노랑, 3 이상 = 빨강</td></tr>

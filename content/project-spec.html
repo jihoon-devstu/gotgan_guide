@@ -301,7 +301,7 @@ svg .ah2{fill:var(--point)}
 <tr><td>order</td><td>product</td><td><code>POST /internal/stock/reservations</code> · <code>DELETE …/{sagaId}</code> · <code>POST /internal/stock/restorations</code></td><td>재고 예약 · 해제 (Saga) · 취소 · 반품 재고 복원</td></tr>
 <tr><td>order</td><td>product</td><td><code>POST /internal/products/prices</code></td><td>주문 금액 서버 재계산 · 스냅샷</td></tr>
 <tr><td>order</td><td>store</td><td><code>GET /internal/stores/{id}/shipping-policy</code></td><td>스토어별 배송비 · 무료배송 기준</td></tr>
-<tr><td>order</td><td>payment</td><td><code>POST /internal/payments</code> · <code>POST /internal/payments/verify</code> · <code>POST /internal/payments/{paymentId}/cancel</code></td><td>결제 준비 · 검증 · (부분) 취소</td></tr>
+<tr><td>order</td><td>payment</td><td><code>POST /internal/payments</code> · <code>POST /internal/payments/verify</code> · <code>POST /internal/payments/{orderNo}/cancel</code> · <code>GET /internal/payments?orderNo=</code></td><td>결제 준비 · 검증 · (전액 · 부분) 취소 · 상태 조회(결제 대기 만료)</td></tr>
 <tr><td>payment</td><td>포트원</td><td><code>GET /payments/{id}</code> · <code>POST …/cancel</code></td><td>결제 조회 · 취소</td></tr>
 <tr><td>store (dashboard)</td><td>order · product · settlement</td><td><code>GET /internal/stats/**</code></td><td>판매자 대시보드 조합 (병렬 · 부분 응답)</td></tr>
 <tr><td>admin</td><td>store · product · user · order · settlement</td><td><code>/internal/applications/**</code> · <code>/internal/categories</code> · <code>/internal/commissions</code> · <code>/internal/settlements/aggregate</code> · <code>/internal/stats/**</code> …</td><td>관리자 기능 전체 · 관리자 대시보드 조합</td></tr>
@@ -1315,10 +1315,10 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 </div>
 <div class="tbl req"><table>
 <tr><th>ID</th><th>요구사항</th><th>상세</th><th>우선</th><th>화면 · API</th></tr>
-<tr data-p="0"><td class="id">PAY-01</td><td><b>결제 준비</b><span class="tag">시스템</span></td><td><ul><li>주문 생성 Saga 단계 — orderNo · 금액 · sagaId(멱등) → READY · <code>portone_payment_id</code> 발급</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">POST /internal/payments</td></tr>
-<tr data-p="0"><td class="id">PAY-02</td><td><b>결제 검증</b><span class="tag">시스템</span></td><td><ul><li>포트원 결제 조회 → 상태 PAID + 금액 = 기대 금액이면 PAID</li><li>불일치 · 미결제 → 포트원 자동 취소 + FAILED 응답(<code>PAYMENT_AMOUNT_MISMATCH</code>) · paymentId 멱등</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">POST /internal/payments/verify</td></tr>
-<tr data-p="0"><td class="id">PAY-03</td><td><b>결제 취소 (부분)</b><span class="tag">시스템</span></td><td><ul><li>취소 · 반품 Saga 단계 — 금액 · claimId 멱등 → 포트원 부분 취소 → payment_cancel 기록</li><li>PAID → PARTIAL_CANCELLED → CANCELLED(전액)</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">POST /internal/payments/{paymentId}/cancel</td></tr>
-<tr data-p="1"><td class="id">PAY-04</td><td><b>포트원 웹훅</b><span class="tag">시스템</span></td><td><ul><li>서명 검증 → 포트원 재조회로 payment 상태 갱신 (브라우저 미복귀 대비)</li><li>order는 결제 대기 만료 스케줄러의 verify로 확정 · 게이트웨이 permitAll</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">POST /api/payments/webhook</td></tr>
+<tr data-p="0"><td class="id">PAY-01</td><td><b>결제 준비</b><span class="tag">시스템</span></td><td><ul><li>주문 생성 Saga 단계 — orderId · orderNo · 금액 · sagaId → READY · <code>portone_payment_id</code>(= <code>pay-{orderNo}</code>) 발급</li><li><b>orderNo 멱등</b>: 같은 orderNo · 같은 금액이면 기존 행 반환, 금액이 다르면 <code>PAYMENT_ORDER_CONFLICT</code>(409)</li><li>금액은 1원 이상 — 0원(전액 포인트) 주문은 order가 결제 단계를 건너뜀(PAY 호출 없음)</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">POST /internal/payments</td></tr>
+<tr data-p="0"><td class="id">PAY-02</td><td><b>결제 검증</b><span class="tag">시스템</span></td><td><ul><li>포트원 결제 조회 → 상태 PAID + 금액 = 기대 금액이면 PAID (orderNo 멱등 — 이미 PAID면 그대로)</li><li>금액 불일치 → 포트원 전액 자동 취소 · <code>payment_cancel</code> 기록 · FAILED → <code>PAYMENT_AMOUNT_MISMATCH</code>(409)</li><li>포트원 미결제(결제창 진행 중 · 닫음) → 상태 변화 없이 <code>PAYMENT_NOT_COMPLETED</code>(409) — 확정은 결제 대기 만료(ORD-07)</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">POST /internal/payments/verify</td></tr>
+<tr data-p="0"><td class="id">PAY-03</td><td><b>결제 취소 (부분)</b><span class="tag">시스템</span></td><td><ul><li>취소 · 반품 Saga 단계 — orderItemId · 금액 · <b>sagaId 멱등</b>(클레임 1건 = 취소 Saga 1건) → 포트원 부분 취소 → payment_cancel 기록</li><li>PAID → PARTIAL_CANCELLED → CANCELLED(누적 취소액 = 결제 금액). 금액 생략 = 주문 Saga 보상용 전액 취소(되돌릴 게 없으면 아무 일도 안 함)</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">POST /internal/payments/{orderNo}/cancel</td></tr>
+<tr data-p="1"><td class="id">PAY-04</td><td><b>포트원 웹훅</b><span class="tag">시스템</span></td><td><ul><li>서명 검증 → 포트원 재조회로 payment 상태 갱신 (브라우저 미복귀 대비)</li><li>order는 결제 대기 만료 스케줄러가 <code>GET /internal/payments?orderNo=</code>로 상태를 조회해 확정 · 게이트웨이 permitAll</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">POST /api/payments/webhook</td></tr>
 <tr data-p="x"><td class="id">PAY-05</td><td><b>실결제 · 무통장 · 결제수단 혼합 · 정기결제</b></td><td><ul><li>사업자 · PG 계약 필요 → 범위 밖</li></ul></td><td><span class="p px">제외</span></td><td class="ref">—</td></tr>
 </table></div>
 
@@ -1478,12 +1478,14 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 <tr><th>상태</th><th>enum</th><th>들어오는 경우</th><th>다음 상태</th></tr>
 <tr><td>결제 준비</td><td><code>READY</code></td><td>주문 Saga가 <code>POST /internal/payments</code> 호출 · <code>portone_payment_id</code> 발급</td><td>PAID · FAILED</td></tr>
 <tr><td>결제 완료</td><td><code>PAID</code></td><td>verify: 포트원 상태 PAID + 금액 = 기대 금액</td><td>PARTIAL_CANCELLED · CANCELLED</td></tr>
-<tr><td>실패</td><td><code>FAILED</code></td><td>금액 불일치(포트원 자동 취소 후) · 미결제 · 결제 대기 만료</td><td>—</td></tr>
+<tr><td>실패</td><td><code>FAILED</code></td><td>금액 불일치(포트원 자동 취소 후) · 결제 대기 만료 · 주문 Saga 보상(READY에서 전액 취소 요청 — 포트원에 결제가 있었다면 취소까지 끝낸 뒤)</td><td>—</td></tr>
 <tr><td>부분 취소</td><td><code>PARTIAL_CANCELLED</code></td><td>상품주문 단위 취소 · 반품 환불 (<code>payment_cancel</code>에 건별 기록)</td><td>PARTIAL_CANCELLED · CANCELLED</td></tr>
 <tr><td>전액 취소</td><td><code>CANCELLED</code></td><td>누적 취소액 = 결제 금액</td><td>—</td></tr>
 </table></div>
 <ul class="b">
   <li>PAID 판정은 포트원 조회 결과로만 (브라우저 응답 · 웹훅 본문을 그대로 믿지 않음) · 포트원 테스트 결제는 실제 출금 없음</li>
+  <li>FAILED · CANCELLED는 끝 상태 — 같은 요청이 다시 오면 상태만 돌려줌. 결제수단은 카드만(<code>payMethod: "CARD"</code>)</li>
+  <li>내부 API 계약 · 오류 코드 상세: gotgan-backend <code>docs/api/payment.md</code></li>
 </ul>
 
 <h3>주문 Saga 단계</h3>

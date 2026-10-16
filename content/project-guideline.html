@@ -786,7 +786,7 @@ data "aws_iam_roles" "github_actions" {
 <li>product-service: <code>s3:PutObject</code>(images/<code>products/</code>, presign용), SQS 수신(store-events 구독 큐)</li>
 <li>review-service: <code>s3:PutObject</code>(images/<code>reviews/</code>, presign용), SQS 수신(order-events 구독 큐)</li>
 <li>order-service: <code>sns:Publish</code>(order-events)</li>
-<li>payment-service: AWS 권한 없음 (포트원 키는 <code>payment-secret</code> K8s Secret으로 들어옴)</li>
+<li>payment-service: AWS 권한 없음 (포트원 키는 <code>payment-service-secret</code> K8s Secret으로 들어옴)</li>
 <li>user-service: SQS 수신(store-events · order-events 구독 큐)</li>
 <li>settlement-service: SQS 수신(order-events · store-events 구독 큐), <code>sns:Publish</code>(settlement-events), <code>s3:GetObject</code>(reports — 명세서 presigned 링크)</li>
 <li>admin-service · gateway-service: AWS 권한 없음</li>
@@ -849,7 +849,7 @@ data "aws_iam_roles" "github_actions" {
 <ul>
 <li>브라우저 입장에서 프론트와 API가 <b>같은 출처</b> → CORS 설정이 거의 필요 없음</li>
 <li>리프레시 토큰 쿠키(<code>Path=/api/auth</code>)가 퍼스트파티로 동작(08장)</li>
-<li>포트원 웹훅 주소도 <code>https://gotgan.vercel.app/api/payments/webhook</code>으로 HTTPS 주소를 줄 수 있음(07장)</li>
+<li>포트원 웹훅 주소도 <code>https://gotgan-ashy.vercel.app/api/payments/webhook</code>으로 HTTPS 주소를 줄 수 있음(07장)</li>
 <li>로그인 · 가입도 우리 React 화면 → <code>/api/auth/**</code> → user-service가 Keycloak을 클러스터 안에서 대신 호출합니다. <b>Keycloak 경로(<code>/auth/*</code>, <code>/realms/*</code>)는 rewrite하지 않고 외부에 노출하지 않습니다.</b></li>
 </ul>
 
@@ -1198,7 +1198,7 @@ CREATE TABLE outbox_event (
 <tr><td>5</td><td>브라우저 ↔ 포트원</td><td>결제창에서 테스트 카드로 결제 (금액 = 실결제금액)</td><td>(서버는 기다림)</td></tr>
 <tr><td>6</td><td>브라우저 → order <code>POST /api/orders/{orderNo}/payment/confirm</code> → payment <code>POST /internal/payments/verify</code></td><td>payment가 포트원에 직접 조회해 상태 · 금액 비교. 불일치면 payment가 <b>포트원 자동 취소</b> 후 오류 응답</td><td>PAYMENT_VERIFIED</td></tr>
 <tr><td>7</td><td>order</td><td>주문 PAID + 상품주문 PAYMENT_DONE → 커밋 후 <code>OrderPaid</code> 발행 → user가 5% 적립(비동기)</td><td>DONE</td></tr>
-<tr><td>실패</td><td>order (역순 보상)</td><td>payment 취소(결제됐다면 포트원 취소, 아니면 READY → CANCELLED) → product 재고 해제 → user 포인트 환원 → 주문 FAILED</td><td>COMPENSATING → COMPENSATED</td></tr>
+<tr><td>실패</td><td>order (역순 보상)</td><td>payment 취소(결제됐다면 포트원 취소, 아니면 READY → FAILED) → product 재고 해제 → user 포인트 환원 → 주문 FAILED</td><td>COMPENSATING → COMPENSATED</td></tr>
 </table></div>
 <div class="tbl"><table>
 <tr><th>결제 후 취소 · 반품 Saga (<code>CANCEL_ITEM</code> · <code>RETURN_ITEM</code>)</th><th>보상 · 실패 시</th></tr>
@@ -1269,7 +1269,7 @@ public class PlaceOrderSaga {
     public void compensate(SagaInstance saga, Order order, Exception cause) {
         sagaStore.compensating(saga, cause.getMessage());
         try {
-            payment.cancel(saga.getSagaId(), order.getOrderNo(), "주문 처리 실패");  // 결제됐으면 포트원 취소, 아니면 READY → CANCELLED
+            payment.cancel(saga.getSagaId(), order.getOrderNo(), "주문 처리 실패");  // 결제됐으면 포트원 취소, 아니면 READY → FAILED
             product.release(saga.getSagaId());                                      // 예약 없으면 그대로
             if (order.getUsedPoint() &gt; 0) {
                 user.refundPoints(saga.getSagaId());                                // 차감 안 됐으면 그대로
@@ -1533,10 +1533,10 @@ Resilience4j의 Spring Boot 스타터는 Boot 버전별 아티팩트(<code>resil
 <div class="tbl"><table>
 <tr><th>#</th><th>흐름</th><th>핵심</th></tr>
 <tr><td>1</td><td>브라우저 → order <code>POST /api/orders</code> (상품 · 수량 · 배송지 · 사용 포인트)</td><td><b>금액은 서버가 계산</b>: product에서 현재 가격을 다시 받아 합산, 브라우저가 보낸 가격은 쓰지 않음. 주문 PENDING → 포인트 사용(user) → 재고 예약(product)</td></tr>
-<tr><td>2</td><td>order → payment <code>POST /internal/payments</code> (orderId · orderNo · 실결제금액 · sagaId)</td><td>payment가 <code>payment</code> 행을 <b>READY</b>로 만들고 <code>portone_payment_id</code>(예: <code>pay-20261021-000123</code>) 발급 → order가 브라우저에 <code>orderNo</code> · <code>portonePaymentId</code> · <code>payAmt</code> 응답. 같은 orderNo로 다시 오면 기존 행 반환(멱등)</td></tr>
+<tr><td>2</td><td>order → payment <code>POST /internal/payments</code> (orderId · orderNo · 실결제금액 · sagaId)</td><td>payment가 <code>payment</code> 행을 <b>READY</b>로 만들고 <code>portone_payment_id</code>(예: <code>pay-20261021-000123</code>) 발급 → order가 브라우저에 <code>orderNo</code> · <code>portonePaymentId</code> · <code>payAmt</code> 응답. 같은 orderNo로 다시 오면 기존 행 반환(멱등). <code>portone_payment_id</code> = <code>pay-{orderNo}</code>, 금액 1원 이상(0원 주문은 이 단계를 건너뜀)</td></tr>
 <tr><td>3</td><td>브라우저가 포트원 SDK로 결제창 호출</td><td>금액 = <b>실결제금액(상품 + 배송비 - 사용 포인트)</b>. 테스트 채널이라 실제 출금 없음</td></tr>
 <tr><td>4</td><td>결제창 종료 → 브라우저 → order <code>POST /api/orders/{orderNo}/payment/confirm</code></td><td>"성공했다"는 브라우저 말은 신호일 뿐</td></tr>
-<tr><td>5</td><td>order → payment <code>POST /internal/payments/verify</code> → payment가 포트원 <code>GET /payments/{paymentId}</code></td><td>포트원 상태 PAID + 금액 = <code>payment.amount</code>(= order가 보낸 기대 금액) → payment PAID, order가 주문 PAID + <code>OrderPaid</code><br>금액 불일치 → <b>payment가 포트원 취소 API로 즉시 자동 취소</b> 후 409 → order가 재고 해제 · 포인트 환원(06장 보상)</td></tr>
+<tr><td>5</td><td>order → payment <code>POST /internal/payments/verify</code> → payment가 포트원 <code>GET /payments/{paymentId}</code></td><td>포트원 상태 PAID + 금액 = <code>payment.amount</code>(= order가 보낸 기대 금액) → payment PAID, order가 주문 PAID + <code>OrderPaid</code><br>금액 불일치 → <b>payment가 포트원 취소 API로 즉시 자동 취소</b> · FAILED 후 409 <code>PAYMENT_AMOUNT_MISMATCH</code> → order가 재고 해제 · 포인트 환원(06장 보상)<br>포트원 미결제 → 409 <code>PAYMENT_NOT_COMPLETED</code>(상태 변화 없음) → order는 결제 대기 유지, 7번 만료에서 확정</td></tr>
 <tr><td>6</td><td>포트원 → <code>POST /api/payments/webhook</code> → <b>payment-service</b></td><td>게이트웨이 permitAll, payment가 <b>웹훅 서명 검증</b>. 웹훅 본문은 "확인 요청"으로만 보고 5번과 같은 포트원 조회 · 비교를 한 번 더. <code>portone_payment_id</code> 기준 멱등(이미 PAID면 그대로)</td></tr>
 <tr><td>7</td><td>15분 지나도 결제 대기 → order의 결제 대기 만료 스케줄러</td><td>payment <code>GET /internal/payments?orderNo=</code>로 상태 조회 → PAID(웹훅이 반영)면 주문 PAID로 마무리, 아니면 보상(06장 ④)</td></tr>
 </table></div>
@@ -1636,7 +1636,7 @@ public class PaymentVerifyService {
     private final PaymentTxService paymentTx;          // @Transactional 짧은 쓰기 모음
     private final PortOneClientAdapter portOne;        // PortOneClient + Resilience4j("portone")
 
-    // /internal/payments/verify (order가 호출) 와 웹훅이 함께 쓰는 메서드 — 멱등
+    // /internal/payments/verify (order가 호출) — orderNo 멱등. 웹훅은 expectedAmount 없이 payment.amount 와만 비교하는 같은 로직(reconcile)
     public PaymentResponse verify(String orderNo, long expectedAmount) {
         Payment payment = paymentTx.getByOrderNo(orderNo);
         if (payment.isPaid()) {
@@ -1649,7 +1649,7 @@ public class PaymentVerifyService {
         if (p.totalAmount() != payment.getAmount() || payment.getAmount() != expectedAmount) {
             log.warn("결제 금액 불일치 - orderNo={}, expected={}, actual={}", orderNo, payment.getAmount(), p.totalAmount());
             portOne.cancel(payment.getPortonePaymentId(), PortOneCancelRequest.full("결제 금액 불일치 자동 취소"));
-            paymentTx.markCancelledByMismatch(payment.getId());
+            paymentTx.markFailedByMismatch(payment.getId());   // FAILED + payment_cancel(사유: 결제 금액 불일치 자동 취소)
             throw new PaymentException(PaymentErrorCode.PAYMENT_AMOUNT_MISMATCH);   // 409 → order가 보상
         }
         return PaymentResponse.from(paymentTx.markPaid(payment.getId(), p));       // PAID · pg_tx_id · method · paid_at
@@ -1660,7 +1660,7 @@ public class PaymentVerifyService {
 <p>구매자가 결제완료 단계 상품주문을 취소(또는 반품 승인) → order-service가 payment <code>POST /internal/payments/{orderNo}/cancel</code>(sagaId · orderItemId · 금액 = 그 상품주문의 실결제 배분액) → payment가 포트원 <b>부분 취소</b> 후 <code>payment_cancel</code>에 기록 → 성공하면 order가 재고 복원 · 포인트 환원/회수 → 상품주문 CANCELLED / RETURNED + 이벤트. 포트원 취소가 실패하면 재고 · 포인트를 되돌리지 않고 요청 상태로 남겨 복구 스케줄러가 재시도합니다(06장).</p></div>
 <div class="card"><h4>게이트웨이 · 보안 설정</h4>
 <ul>
-<li><code>/api/payments/webhook</code>은 토큰이 없으므로 게이트웨이에서 <code>permitAll</code>, 대신 payment-service가 <b>웹훅 서명</b>을 검증(실패하면 400, 처리 안 함)</li>
+<li><code>/api/payments/webhook</code>은 토큰이 없으므로 게이트웨이에서 <code>permitAll</code>, 대신 payment-service가 <b>웹훅 서명</b>을 검증(실패하면 400, 처리 안 함). 포트원 V2 웹훅은 Standard Webhooks 형식(<code>webhook-id</code> · <code>webhook-timestamp</code> · <code>webhook-signature</code> 헤더, HMAC-SHA256) — 구현 시 포트원 V2 문서로 재확인</li>
 <li>그 밖의 payment API는 <code>/internal/**</code>뿐 — 게이트웨이 라우트 없음, 브라우저가 직접 부를 수 없음</li>
 <li>API Secret을 로그 · 에러 메시지에 남기지 않기 (gitleaks · 컨벤션 2-8)</li>
 <li>결제 금액 위 · 변조 시도는 WARN 로그 + 지표로 남겨 Grafana에서 확인</li>
@@ -1670,7 +1670,7 @@ public class PaymentVerifyService {
 <ul>
 <li><b>V1(아임포트) 자료와 섞지 않기.</b> 검색되는 블로그 다수가 V1(<code>IMP.request_pay</code>, <code>imp_uid</code>) 방식입니다. 이 프로젝트는 V2(<code>PortOne.requestPayment</code>, <code>paymentId</code>)로 통일하고, 요청 필드 이름은 포트원 개발자 문서(V2)를 기준으로 합니다.</li>
 <li>테스트 결제는 PG에 따라 당일 자동 취소될 수 있으므로, "포트원 콘솔의 결제 내역"이 아니라 <b>paymentdb의 <code>payment</code> · <code>payment_cancel</code></b>과 order의 상품주문 상태를 기준으로 정산합니다.</li>
-<li>포인트로 전액을 내는 주문(실결제금액 0원)은 포트원 결제창을 열 수 없습니다. 최소 결제 금액을 두거나 0원 주문은 결제 단계를 건너뛰는 규칙을 구지훈이 정해 API 명세에 적습니다.</li>
+<li>포인트로 전액을 내는 주문(실결제금액 0원)은 포트원 결제창을 열 수 없습니다. <b>(10/16 결정) 0원 주문은 order가 결제 단계(준비 · 검증)를 건너뛰고 바로 PAID</b> — payment는 1원 이상만 받습니다(gotgan-backend <code>docs/api/payment.md</code>).</li>
 <li>모바일 브라우저는 결제창이 리다이렉트 방식이라 <code>requestPayment</code>의 응답 대신 <code>redirectUrl</code>로 돌아옵니다. 완료 페이지에서도 [요청 2](<code>payment/confirm</code>)를 호출하도록 만듭니다.</li>
 <li>실서비스(실결제) 전환은 사업자 등록과 PG 계약이 필요하므로 범위 밖(Won't)입니다.</li>
 </ul></div>

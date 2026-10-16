@@ -2723,7 +2723,7 @@ class SagaMetrics {
 <li>saga 보상 또는 DLQ 메시지 발생</li>
 </ul>
 <h4>로그 ↔ 트레이스 연결</h4>
-<p>Grafana Loki 데이터소스의 <b>Derived fields</b>에 <code>traceId</code> 정규식을 걸어 Zipkin 링크로 연결 → 에러 로그에서 클릭 한 번으로 그 요청의 전체 경로(게이트웨이 → order → product → payment)를 봅니다.</p></div>
+<p>Grafana Loki 데이터소스의 <b>Derived fields</b>에 <code>traceId</code> 정규식을 걸어 Zipkin 링크로 연결 → 에러 로그에서 클릭 한 번으로 그 요청의 전체 경로(게이트웨이 → order → product → payment)를 봅니다. 반대로 Zipkin 트레이스의 구간에서 <b>Related logs</b>를 누르면 <code>{namespace="sesac-gojigi"} |= "&lt;traceId&gt;"</code>로 그 요청이 거친 모든 서비스의 로그를 시간순으로 엽니다. Zipkin 구간에는 <code>service.name</code> 속성이 없어 서비스별 태그 매핑으로는 링크가 생기지 않으므로 traceId로만 찾습니다. 두 방향 모두 로그 본문이 JSON <code>"traceId":"..."</code> 형식이어야 동작합니다(<code>logback-spring.xml</code>).</p></div>
 </div>
 
 <h3>헬스 체크 대시보드 (System Status)</h3>

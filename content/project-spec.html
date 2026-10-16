@@ -874,11 +874,11 @@ gotgan-config/deploy/
 <h4>폴더 구조</h4>
 <pre><code>deploy/observability/            monitoring 네임스페이스 — kubectl로 적용
 ├── 00-namespace.yaml
-├── prometheus.yaml              ConfigMap(수집 설정) · RBAC · Deployment · Service · PVC
+├── prometheus.yaml              ConfigMap(수집 설정) · RBAC · StatefulSet + PVC 10Gi · Service
 ├── kube-state-metrics.yaml      레플리카 · 파드 상태 지표 (System Status 필수)
-├── loki.yaml                    보존 7일 · PVC
-├── zipkin.yaml
-├── grafana.yaml                 데이터소스 프로비저닝(Prometheus · Loki · Zipkin · CloudWatch)
+├── loki.yaml                    단일 바이너리 · StatefulSet + PVC 10Gi · 보존 7일
+├── zipkin.yaml                  메모리 저장(span 최대 10만) · Deployment
+├── grafana.yaml                 데이터소스 프로비저닝(Prometheus · Loki · Zipkin, CloudWatch 는 5주차) · 디스크 없음
 ├── alerting/                    알림 규칙 · 연락처(웹훅)
 └── dashboards/                  system-status.json · service-red.json · jvm.json · business.json · cluster.json · lambda.json
 
@@ -1071,11 +1071,11 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 <tr><td><code>k8s/keycloak/keycloak.yaml</code></td><td>Keycloak Deployment(1) + ClusterIP Service · keycloakdb 연결 · <code>KC_HOSTNAME=http://keycloak:8080</code> · 외부 미노출</td><td>kubectl 1회</td></tr>
 <tr><td><code>k8s/keycloak/realm-gotgan.json</code></td><td>realm import — 역할 3종 · 클라이언트 <code>gotgan-backend</code>(secret은 <code>${GOTGAN_BACKEND_CLIENT_SECRET}</code> 자리표시자 → <code>keycloak-secret</code>으로 치환) · 프로토콜 매퍼 · ADMIN 시드 계정</td><td>기동 시 import (매일 아침)</td></tr>
 <tr><td><code>observability/00-namespace.yaml</code></td><td><code>monitoring</code> 네임스페이스</td><td>kubectl 1회</td></tr>
-<tr><td><code>observability/prometheus.yaml</code></td><td>수집 설정(파드 어노테이션 발견 · 15초) · RBAC · Deployment · PVC</td><td>kubectl</td></tr>
-<tr><td><code>observability/kube-state-metrics.yaml</code></td><td>레플리카 · 파드 Ready 지표 (System Status 데이터). blackbox exporter는 없음(10/13 3차)</td><td>kubectl</td></tr>
-<tr><td><code>observability/loki.yaml</code></td><td>로그 저장소 · 보존 7일 · PVC</td><td>kubectl</td></tr>
-<tr><td><code>observability/zipkin.yaml</code></td><td>트레이스 저장 · UI</td><td>kubectl</td></tr>
-<tr><td><code>observability/grafana.yaml</code></td><td>Grafana + 데이터소스 자동 등록(Prometheus · Loki · Zipkin · CloudWatch)</td><td>kubectl</td></tr>
+<tr><td><code>observability/prometheus.yaml</code></td><td>수집 설정(파드 어노테이션 발견 · 15초) · RBAC · StatefulSet + PVC 10Gi(보존 7일 · 상한 8GB). EBS 는 한 노드에만 붙어 옛 파드가 먼저 내려가야 하므로 StatefulSet</td><td>kubectl</td></tr>
+<tr><td><code>observability/kube-state-metrics.yaml</code></td><td>레플리카 · 파드 Ready 지표 (System Status 데이터). 수집 · 권한은 deployments · replicasets · statefulsets · pods · nodes 5종 읽기로 한정. blackbox exporter는 없음(10/13 3차)</td><td>kubectl</td></tr>
+<tr><td><code>observability/loki.yaml</code></td><td>로그 저장소 · 단일 바이너리 · StatefulSet + PVC 10Gi · 보존 7일(compactor)</td><td>kubectl</td></tr>
+<tr><td><code>observability/zipkin.yaml</code></td><td>트레이스 저장 · UI · 메모리 저장(재시작 · 21:00 삭제 시 사라짐, span 최대 10만)</td><td>kubectl</td></tr>
+<tr><td><code>observability/grafana.yaml</code></td><td>Grafana + 데이터소스 자동 등록(Prometheus · Loki · Zipkin — CloudWatch 는 5주차 IRSA 와 함께). 디스크 없음(설정 · 대시보드는 git 파일)</td><td>kubectl</td></tr>
 <tr><td><code>observability/dashboards/*.json</code></td><td>대시보드 정의 (System Status · RED · JVM · 비즈니스 · 클러스터 · Lambda)</td><td>ConfigMap으로 프로비저닝</td></tr>
 <tr><td><code>observability/alerting/</code></td><td>알림 규칙 · 연락처(Discord/Slack 웹훅)</td><td>ConfigMap으로 프로비저닝</td></tr>
 <tr><td><code>helm/sesac-gojigi-app/Chart.yaml</code></td><td>차트 이름 · 버전 (ArgoCD가 Helm 앱으로 인식하는 기준)</td><td>ArgoCD</td></tr>

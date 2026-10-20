@@ -120,7 +120,7 @@ svg .arrowhead2{fill:var(--accent)}
     <li class="grp">질문별 답변</li>
     <li><a href="#s3"><span class="num">03</span>서비스 분할 기준 · 업무 분장</a></li>
     <li><a href="#s4"><span class="num">04</span>AWS 인프라 · EC2 사이징</a></li>
-    <li><a href="#s-domain"><span class="num">05</span>서빙 도메인: DuckDNS · Vercel</a></li>
+    <li><a href="#s-domain"><span class="num">05</span>서빙 도메인: Route 53 · ACM · Vercel</a></li>
     <li><a href="#s5"><span class="num">06</span>서비스별 DB · Flyway · Saga · 장애 격리</a></li>
     <li><a href="#s-pay"><span class="num">07</span>결제: payment-service · 포트원</a></li>
     <li><a href="#s6"><span class="num">08</span>인증 · 인가: Gateway + Keycloak</a></li>
@@ -166,7 +166,7 @@ svg .arrowhead2{fill:var(--accent)}
 <tr><td>업무 분장</td><td><b>구지훈</b> AWS IaC · settlement · admin · payment / <b>이경석</b> CI/CD · Keycloak · user · 게이트웨이 인증 · order · review / <b>박지연</b> 로깅 · 관측성 · 헬스 체크 · product · store. 발표도 각자 담당 영역을 직접 설명.</td><td>03</td></tr>
 <tr><td>대시보드</td><td>판매자 대시보드 = store, 관리자 대시보드 = admin 안의 <code>dashboard</code> 패키지. 각 서비스의 <code>/internal/stats/**</code>를 <b>병렬 호출해 DTO 하나로 조합</b>하고, 한 서비스가 죽으면 그 영역만 <code>null</code> + <code>unavailable</code>로 <b>부분 응답(200)</b>. 집계 계산은 데이터 주인 서비스가.</td><td>03 · 06</td></tr>
 <tr><td>EC2 크기</td><td>3티어 — 백 티어 <b><code>app</code> t3.xlarge × 2</b>(min 0 · max 3, 시연 때 3대) + DB 티어 <b><code>db</code> t3.medium × 1</b>(2a 고정, MySQL · Redis만, NetworkPolicy로 백 티어만 접근). OS는 AL2023. app 파드 약 35개 · requests 약 9.8Gi지만 JVM 실사용은 약 12~13Gi라 t3.large × 2로는 여유 1~2Gi · 노드 1대 장애(N-1) 시연 불가 → 10/14 t3.xlarge × 2로 조정(할당 약 30Gi).</td><td>04</td></tr>
-<tr><td>서빙 도메인</td><td>프론트는 <b>Vercel</b>(기본 HTTPS · PR 미리보기), API는 NLB <b>고정 IP(EIP)</b> + <b>DuckDNS</b>. Vercel rewrites로 <code>/api/*</code>를 API로 넘겨 브라우저에서는 같은 출처로 보이게.</td><td>05</td></tr>
+<tr><td>서빙 도메인</td><td>프론트는 <b>Vercel</b>(기본 HTTPS · PR 미리보기), API는 <b>Route 53</b> 도메인 <code>https://api.gotgan.click</code> → NLB <b>고정 IP(EIP)</b> · <b>ACM</b> 인증서(NLB 443 TLS). Vercel rewrites로 <code>/api/*</code>를 API로 넘겨 브라우저에서는 같은 출처로 보이게.</td><td>05</td></tr>
 <tr><td>서비스별 DB · 장애 격리</td><td>MySQL <b>물리 1대 + 스키마 8개</b>(업무 7 + <code>keycloakdb</code>) · 계정도 서비스별. 다른 서비스 테이블 FK · JOIN 금지, ID만 참조 · 스냅샷 복사, 스키마 변경은 서비스마다 <b>Flyway</b>. 장바구니 원본도 orderdb <code>cart_item</code>(Redis는 캐시). 클러스터를 매일 다시 만들므로 시연 데이터는 Flyway 시드로 복원. 모든 동기 호출은 <b>Resilience4j</b>(타임아웃 · 서킷 브레이커 · 폴백)로 "서비스 하나를 죽여도 에러 메시지로 1차 처리".</td><td>06</td></tr>
 <tr><td>Saga · 포인트</td><td>order가 오케스트레이터. <b>주문 생성</b> = user(포인트 사용 차감) → product(재고 예약) → payment(결제 준비 · 포트원 검증), 실패 시 역순 보상. <b>결제 후 취소 · 반품</b> = payment 포트원 취소 → product 재고 복원 → user 포인트 환원 · 회수. 포인트는 실결제금액의 <b>5% 적립</b>(<code>OrderPaid</code> 이벤트) · 다음 결제에서 사용.</td><td>06</td></tr>
 <tr><td>결제</td><td><b>payment-service로 분리</b>, <b>포트원(PortOne) V2 테스트 채널</b>. 브라우저 SDK 결제창 → order의 <code>payment/confirm</code> → payment가 포트원 API로 금액 · 상태 검증 → 불일치 시 자동 취소. 브라우저는 payment를 직접 부르지 않음(웹훅 제외).</td><td>07</td></tr>
@@ -217,7 +217,7 @@ svg .arrowhead2{fill:var(--accent)}
 <li><b>기간은 2026-10-12(월) ~ 11-20(금)</b>입니다. 개발은 11-13(금) 기능 동결까지, 11-16 ~ 11-20은 QA · 발표 준비, 11-20에 발표합니다(16장).</li>
 <li><b>결제는 포트원(PortOne) V2 테스트 채널</b>로 실제 결제 흐름을 연동합니다. 사업자가 아니므로 테스트 상점 · 테스트 키만 씁니다(07장).</li>
 <li><b>택배사 연동은 하지 않습니다.</b> 판매자가 송장번호를 직접 입력하고, 배송완료는 판매자 버튼 또는 스케줄러로 status만 바꿉니다.</li>
-<li>AWS 계정 하나를 팀이 공유하고, 환경은 <b>dev 하나</b>입니다. 유료 도메인 없이 <b>Vercel(프론트) + DuckDNS(API)</b>로 서빙합니다(05장).</li>
+<li>AWS 계정 하나를 팀이 공유하고, 환경은 <b>dev 하나</b>입니다. <b>Vercel(프론트) + Route 53 도메인 · ACM 인증서(API, <code>api.gotgan.click</code>)</b>로 서빙합니다(05장, 10/20 DuckDNS에서 전환).</li>
 <li>협업은 <b>GitHub(Issues · Projects · PR) + Actions</b>로 합니다.</li>
 <li>EKS 워커 노드 OS는 AL2023, 우분투는 개발용 VM · 작업용 EC2에 씁니다(04장).</li>
 <li><b>저장소는 3개</b>입니다: <code>sesac-final-1/gotgan-backend</code>(서비스 · 서버리스) · <code>gotgan-frontend</code>(React) · <code>gotgan-config</code>(배포 · 인프라). 로컬에서는 한 상위 폴더 아래 세 폴더를 나란히 둡니다(15장).</li>
@@ -241,9 +241,9 @@ svg .arrowhead2{fill:var(--accent)}
 <h3>전체 아키텍처 구조도 (AWS 포함)</h3>
 <p>사용자 요청 · 이벤트 · 배포 · 관측이 AWS 어디를 지나는지 한 장에 담은 구조도입니다(10/13 2차 회의 요청). 주황 점선 프레임(EKS 클러스터 · 노드 · 파드 · EBS)은 <b>매일 07:00 생성 · 21:00 삭제</b>되고, 나머지(VPC · EIP · ECR · S3 · SNS/SQS · DynamoDB · IAM)는 상시입니다. 구조는 <b>3티어</b>입니다 — 프론트 티어(Vercel) → 백 티어(EKS <code>app</code> 노드 그룹: gateway · 업무 서비스 · Keycloak · 관측성 · ArgoCD) → DB 티어(EKS <code>db</code> 노드 그룹: MySQL · Redis만, NetworkPolicy로 백 티어에서만 접근). 네트워크 · 서브넷 · 보안 그룹 상세는 04장, 워크플로는 12장.</p>
 <div class="diagram"><a href="/img/aws-architecture.svg" target="_blank" rel="noreferrer"><img src="/img/aws-architecture.svg" alt="곳간 아키텍처 구조도 — AWS · EKS · 서비스 9개 · 이벤트 · CI/CD" style="display:block;width:100%;height:auto"></a></div>
-<p class="cap">번호 흐름 — ① 사용자 → Vercel ② <code>/api/*</code> → DuckDNS → EIP → NLB ③ gateway(JWT 검증 · X-User-* 헤더) ④ 서비스 라우팅 · admin → <code>/internal/**</code> ⑤ 주문 Saga(order → user · product · payment) ⑥ 백 티어 → DB 티어(JDBC 3306 · Redis 6379, NetworkPolicy 통과) ⑦ SNS → SQS 이벤트 ⑧ 포트원 검증 · 웹훅 ⑨ 백엔드가 presigned URL 발급 → 브라우저가 S3에 직접 PUT(프론트가 백 티어를 거치지 않는 유일한 예외) ⑩ Lambda(메일 · 명세서 · 로그 아카이브) ⑪ CI → ECR → config 태그 커밋 ⑫ ArgoCD GitOps ⑬ Terraform 일일 스케줄 · bootstrap · secrets-sync ⑭ 관측(Prometheus · Loki · Zipkin → Grafana) ⑮ Vercel 배포. 클릭하면 원본 크기로 열립니다.</p>
+<p class="cap">번호 흐름 — ① 사용자 → Vercel ② <code>/api/*</code> → <code>https://api.gotgan.click</code>(Route 53) → EIP → NLB 443(ACM TLS) ③ gateway(JWT 검증 · X-User-* 헤더) ④ 서비스 라우팅 · admin → <code>/internal/**</code> ⑤ 주문 Saga(order → user · product · payment) ⑥ 백 티어 → DB 티어(JDBC 3306 · Redis 6379, NetworkPolicy 통과) ⑦ SNS → SQS 이벤트 ⑧ 포트원 검증 · 웹훅 ⑨ 백엔드가 presigned URL 발급 → 브라우저가 S3에 직접 PUT(프론트가 백 티어를 거치지 않는 유일한 예외) ⑩ Lambda(메일 · 명세서 · 로그 아카이브) ⑪ CI → ECR → config 태그 커밋 ⑫ ArgoCD GitOps ⑬ Terraform 일일 스케줄 · bootstrap · secrets-sync ⑭ 관측(Prometheus · Loki · Zipkin → Grafana) ⑮ Vercel 배포. 클릭하면 원본 크기로 열립니다.</p>
 <h3>서비스 · 이벤트 관점</h3>
-<p class="lead">학습 가이드의 구조(VPC · EKS · LBC → NLB → Spring Cloud Gateway, CoreDNS, PLG, GitHub Actions + ArgoCD)를 유지하고, Keycloak과 업무 서비스 8개, AWS 관리형 자원(S3 · SNS/SQS · Lambda · SES · DynamoDB), GitHub Secrets(시크릿) · SonarQube Cloud, 외부 서비스(Vercel · DuckDNS · 포트원)를 더한 모습입니다.</p>
+<p class="lead">학습 가이드의 구조(VPC · EKS · LBC → NLB → Spring Cloud Gateway, CoreDNS, PLG, GitHub Actions + ArgoCD)를 유지하고, Keycloak과 업무 서비스 8개, AWS 관리형 자원(S3 · SNS/SQS · Lambda · SES · DynamoDB), GitHub Secrets(시크릿) · SonarQube Cloud, 외부 서비스(Vercel · 포트원)와 Route 53 · ACM를 더한 모습입니다.</p>
 <div class="diagram">
 <svg viewBox="0 0 1200 660" role="img" aria-label="곳간 전체 아키텍처">
 <defs>
@@ -253,7 +253,7 @@ svg .arrowhead2{fill:var(--accent)}
 <!-- 사용자 / 엣지 -->
 <rect class="bx" x="20" y="30" width="150" height="50"/><text x="95" y="52" text-anchor="middle" class="b">브라우저</text><text x="95" y="69" text-anchor="middle" class="s">구매자 · 판매자 · 관리자</text>
 <rect class="bx" x="210" y="30" width="180" height="50"/><text x="300" y="52" text-anchor="middle" class="b">Vercel (HTTPS)</text><text x="300" y="69" text-anchor="middle" class="s">React 정적 파일 · /api/* rewrite</text>
-<rect class="bx" x="210" y="110" width="180" height="44"/><text x="300" y="129" text-anchor="middle" class="b">DuckDNS</text><text x="300" y="146" text-anchor="middle" class="s">gotgan-api.duckdns.org → EIP</text>
+<rect class="bx" x="210" y="110" width="180" height="44"/><text x="300" y="129" text-anchor="middle" class="b">Route 53 · ACM</text><text x="300" y="146" text-anchor="middle" class="s">api.gotgan.click → EIP 2개</text>
 <rect class="aws" x="640" y="30" width="170" height="50"/><text x="725" y="52" text-anchor="middle" class="b">NLB (EIP 고정)</text><text x="725" y="69" text-anchor="middle" class="s">LBC가 생성 · 퍼블릭 서브넷</text>
 <rect class="bx" x="850" y="30" width="210" height="50"/><text x="955" y="52" text-anchor="middle" class="b">포트원 V2 (테스트 채널)</text><text x="955" y="69" text-anchor="middle" class="s">브라우저 결제창 · payment가 검증/취소</text>
 <path class="ln" d="M170,55 H206" marker-end="url(#ah)"/>
@@ -323,7 +323,7 @@ svg .arrowhead2{fill:var(--accent)}
 </div>
 <div class="tbl"><table>
 <tr><th>단계</th><th>요청 하나가 지나가는 길 (예: 주문하기)</th></tr>
-<tr><td>1</td><td>브라우저 → Vercel(<code>https://gotgan.vercel.app/api/orders</code>) → rewrite → DuckDNS(<code>gotgan-api.duckdns.org</code> = NLB 고정 IP) → 게이트웨이 파드</td></tr>
+<tr><td>1</td><td>브라우저 → Vercel(<code>https://gotgan.vercel.app/api/orders</code>) → rewrite → <code>https://api.gotgan.click</code>(Route 53 A 레코드 = NLB 고정 IP, NLB 443에서 ACM 인증서로 TLS 종료) → 게이트웨이 파드</td></tr>
 <tr><td>2</td><td>게이트웨이가 Keycloak이 발급한 Access Token을 JWKS로 검증(서명 · 만료 · 역할)하고 <code>X-User-Id</code>, <code>X-User-Roles</code>, <code>X-Store-Id</code> 헤더를 붙여 order-service로 전달. 로그인 · 가입 자체는 <code>/api/auth/**</code> → user-service가 Keycloak을 대신 호출</td></tr>
 <tr><td>3</td><td>order-service가 주문을 <code>PENDING</code>으로 저장 → user-service <code>/internal/points/use</code>(포인트를 쓸 때만) → product-service <code>/internal/stock/reservations</code>(재고 예약) → payment-service <code>/internal/payments</code>(결제 준비 · <code>READY</code>) → 브라우저가 포트원 결제창으로 결제 (Saga)</td></tr>
 <tr><td>4</td><td>브라우저 → order <code>POST /api/orders/{orderNo}/payment/confirm</code> → payment-service <code>/internal/payments/verify</code>가 포트원 API로 금액 · 상태 검증 → order <code>PAID</code> 확정. 실패하면 역순 보상(포트원 취소 → 재고 해제 → 포인트 환원 → <code>FAILED</code>). 모든 동기 호출은 Resilience4j 타임아웃 · 서킷 브레이커 적용</td></tr>
@@ -582,7 +582,7 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 </table></div>
 <div class="tbl"><table>
 <tr><th>누가 · 무엇으로</th><th>경로</th><th>조건</th></tr>
-<tr><td>사용자(브라우저)</td><td>Vercel → <code>/api/*</code> rewrite → DuckDNS → EIP → NLB(80/443) → gateway 파드 → 서비스</td><td>gateway 외 서비스는 ClusterIP. 05장 · 08장</td></tr>
+<tr><td>사용자(브라우저)</td><td>Vercel → <code>/api/*</code> rewrite → <code>https://api.gotgan.click</code>(Route 53) → EIP → NLB(443, ACM TLS) → gateway 파드 → 서비스</td><td>gateway 외 서비스는 ClusterIP. 05장 · 08장</td></tr>
 <tr><td>팀원 kubectl · helm</td><td>각자 WSL → EKS 퍼블릭 엔드포인트(API 443) — 노드 · 파드에 직접 접속 안 함</td><td><code>access_entries</code>에 IAM ARN 등록(위 main.tf). <code>aws eks update-kubeconfig</code></td></tr>
 <tr><td>작업용 EC2(선택)</td><td>SSM Session Manager → kubectl · <code>terraform plan</code></td><td>22번 포트 없음. apply/destroy는 스케줄 워크플로 또는 구지훈만</td></tr>
 <tr><td>GitHub Actions(OIDC)</td><td>Actions 역할 → Terraform(EKS API · AWS API) · ECR push · kubectl(bootstrap · secrets-sync)</td><td>장기 자격 증명 없음. 역할은 <code>cicd/</code>. 12장</td></tr>
@@ -595,7 +595,7 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <tr><td>VPC · 서브넷 4 · IGW · <b>NAT GW</b> · 라우팅 · EKS용 태그</td><td><code>vpc/</code></td><td>1주차, 그대로 유지</td><td>야간 비용의 대부분(NAT 시간당 요금)</td></tr>
 <tr><td>ECR 저장소 9개 + 수명주기</td><td><code>ecr/</code></td><td>1주차</td><td>이미지가 남아 있어 아침에 다시 빌드할 필요 없음</td></tr>
 <tr><td>GitHub OIDC 공급자 · Actions 역할</td><td><code>cicd/</code></td><td>1주차</td><td>스케줄 · bootstrap 워크플로가 이 역할로 apply/destroy</td></tr>
-<tr><td><b>EIP 2</b> · S3 4 · SNS 3 + SQS/DLQ · DynamoDB 2 · SES 자격 증명 · SSM 파라미터 · 작업용 EC2(선택)</td><td><code>app/</code></td><td>EIP는 1주차, 나머지 2주차까지</td><td>EIP가 남으므로 <b>DuckDNS 레코드는 바꾸지 않음</b>. DynamoDB 발송 이력 · S3 파일은 보존</td></tr>
+<tr><td><b>EIP 2</b> · S3 4 · SNS 3 + SQS/DLQ · DynamoDB 2 · SES 자격 증명 · SSM 파라미터 · 작업용 EC2(선택)</td><td><code>app/</code></td><td>EIP는 1주차, 나머지 2주차까지</td><td>EIP가 남으므로 <b>Route 53 A 레코드 · ACM 인증서는 바꾸지 않음</b>(<code>dns.tf</code>도 <code>app/</code> 상시). DynamoDB 발송 이력 · S3 파일은 보존</td></tr>
 <tr><td rowspan="2"><b>매일 재생성</b><br>07:00 생성 · 21:00 삭제</td><td>EKS 제어 평면 · 관리형 노드 그룹 2개(<code>app</code> t3.xlarge × 2 · <code>db</code> t3.medium × 1) · access entries · IRSA 역할 · 애드온(EBS CSI · LBC · metrics-server)</td><td><code>cluster/</code> — <code>infra-schedule.yml</code>(cron <code>0 22 * * *</code> UTC = KST 07:00 apply, <code>0 12 * * *</code> UTC = KST 21:00 destroy)</td><td>매일 (주말 포함)</td><td>apply → bootstrap까지 <b>약 20분</b>(제어 평면 10분 + 노드 + 애드온). destroy 전에 ArgoCD 앱 · LoadBalancer Service · PVC를 먼저 지워 NLB · EBS가 고아로 남지 않게</td></tr>
 <tr><td>클러스터 안의 전부: 파드(app 노드 — gateway 2 · 업무 서비스 8 · Keycloak · 관측성 · ArgoCD / db 노드 — MySQL · Redis) · <b>NLB</b>(LBC) · <b>EBS 볼륨</b>(gp3 디스크, PVC) · NetworkPolicy · K8s Secret · ConfigMap</td><td><code>bootstrap.yml</code>(apply 직후 자동) → <code>deploy/k8s/</code>(namespace · configmap · <b>02-networkpolicy</b> · db · keycloak) → <code>secrets-sync</code> → 관측성 → ArgoCD → 서비스 9개</td><td>07:00 apply 직후</td><td>NLB는 상시 EIP를 어노테이션으로 다시 붙임 → 주소 불변</td></tr>
 </table></div>
@@ -604,7 +604,7 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <li><b>DB는 매일 아침 빈 상태</b>에서 시작합니다. 각 서비스의 Flyway 마이그레이션이 스키마를 만들고, <code>R__demo_seed.sql</code>이 시연 데이터를 넣습니다(06장). "어제 만든 주문"은 없고, 시드에 있는 것만 있습니다.</li>
 <li>Keycloak 사용자도 사라집니다. realm import의 시드 계정 + 시드 스크립트로 재생성합니다(08장). 클라이언트 시크릿은 secrets-sync가 넣는 K8s Secret에서 옵니다.</li>
 <li>Redis 캐시 · Loki 로그 · Prometheus 지표도 비워집니다. 장바구니는 MySQL이 원본이라 문제없고(09장), 대시보드는 "오늘" 데이터만 보입니다.</li>
-<li>EIP · S3 · DynamoDB · ECR은 남습니다. 그래서 DuckDNS · Vercel 설정은 손대지 않고, 이미지는 다시 빌드하지 않습니다.</li>
+<li>EIP · S3 · DynamoDB · ECR(그리고 Route 53 레코드 · ACM 인증서)은 남습니다. 그래서 DNS · Vercel 설정은 손대지 않고, 이미지는 다시 빌드하지 않습니다.</li>
 <li>IRSA 역할의 신뢰 정책은 클러스터 OIDC 공급자를 가리키는데, 클러스터가 새로 생기면 공급자 ARN이 바뀝니다. 그래서 <b>IRSA 역할은 <code>cluster/irsa.tf</code>에 두고 클러스터와 함께 매일 재생성</b>합니다. 역할 이름이 같으므로 ARN도 같아 Helm values의 <code>roleArn</code>은 바뀌지 않고, 권한 대상(S3 · SQS · SNS)은 <code>app/</code> remote state에서 읽습니다. 역할을 상시 <code>app/</code>에 두면 매일 신뢰 정책을 갱신해야 해 파드가 <code>AccessDenied</code>를 받기 쉽습니다.</li>
 <li>워크플로 파일(<code>infra-schedule.yml</code> · <code>bootstrap.yml</code> · <code>secrets-sync.yml</code>)의 단계와 수동 실행(<code>workflow_dispatch</code>)은 12장에 있습니다. 노드 수를 손으로 조정하는 <code>scripts/scale-nodes.sh</code>는 보조 도구일 뿐, 야간 절약은 destroy가 맡습니다.</li>
 </ul></div>
@@ -761,7 +761,7 @@ data "aws_iam_roles" "github_actions" {
 <tr><td><code>cicd/</code></td><td>GitHub OIDC 공급자, Actions 역할 (ECR push · Serverless 배포 · 스케줄 apply/destroy · bootstrap)</td><td>상시</td><td><b>이경석 작성 · apply</b> — 워크플로가 쓸 역할을 만드는 폴더라 로컬 apply(컨벤션 5-2 예외). 다른 폴더와 상태 의존 없음</td></tr>
 <tr><td><b><code>app/</code></b></td><td>
 <ul>
-<li><b>NLB용 EIP 2개</b> (05장 DuckDNS)</li>
+<li><b>NLB용 EIP 2개</b> + Route 53 A 레코드 · ACM 인증서(<code>dns.tf</code>) (05장)</li>
 <li>S3 4개: <code>sesac-gojigi-images-{계정4}</code>(<code>products/</code> · <code>reviews/</code> · <code>stores/</code> — 이 세 prefix만 <b>공개 읽기</b>, 업로드는 presigned PUT · 10/14), <code>seller-docs</code>, <code>reports</code>, <code>log-archive</code>(90일 후 Glacier)</li>
 <li>SNS 토픽 3개: <code>sesac-gojigi-store-events</code> · <code>order-events</code> · <code>settlement-events</code> + 구독자별 SQS 큐 · DLQ(3회)</li>
 <li>DynamoDB 2개: <code>sesac-gojigi-notifications</code> · <code>sesac-gojigi-settlement-reports</code></li>
@@ -835,26 +835,41 @@ data "aws_iam_roles" "github_actions" {
 
 <!-- ============================================================ 05 서빙 도메인 -->
 <section id="s-domain">
-<h2><span class="n">05</span>서빙 도메인: DuckDNS · Vercel</h2>
-<p class="lead">유료 도메인(Route53)과 인증서(ACM) 없이 무료 서비스로 공개 주소를 만듭니다. 프론트는 Vercel, API는 DuckDNS가 가리키는 NLB 고정 IP입니다. 외부에 열리는 것은 게이트웨이의 <code>/api/*</code>뿐입니다.</p>
+<h2><span class="n">05</span>서빙 도메인: Route 53 · ACM · Vercel</h2>
+<p class="lead">프론트는 Vercel, API는 Route 53에서 등록한 도메인 <code>api.gotgan.click</code>이 NLB 고정 IP(EIP)를 가리키고, NLB가 ACM 인증서로 HTTPS(443)를 받습니다. 외부에 열리는 것은 게이트웨이의 <code>/api/*</code>뿐입니다. (10/20 DuckDNS · HTTP 80에서 전환)</p>
 <div class="tbl"><table>
 <tr><th>대상</th><th>서빙</th><th>주소 예</th><th>HTTPS</th></tr>
 <tr><td>프론트 (React)</td><td><b>Vercel</b> (GitHub 연동 자동 배포)</td><td><code>https://gotgan.vercel.app</code></td><td>Vercel이 자동 제공</td></tr>
-<tr><td>API (게이트웨이)</td><td><b>DuckDNS</b> → NLB의 <b>EIP(고정 IP)</b></td><td><code>http://gotgan-api.duckdns.org</code></td><td>기본은 없음 → 브라우저는 Vercel을 거쳐 호출</td></tr>
+<tr><td>API (게이트웨이)</td><td><b>Route 53</b> A 레코드 → NLB의 <b>EIP 2개</b> → NLB <b>443 TLS 리스너</b> → gateway 파드 8080</td><td><code>https://api.gotgan.click</code></td><td><b>ACM 인증서</b>(무료 · 자동 갱신), NLB에서 TLS 종료</td></tr>
 <tr><td>Keycloak · Grafana · ArgoCD</td><td>공개하지 않음 (ClusterIP)</td><td><code>kubectl port-forward</code></td><td>—</td></tr>
+</table></div>
+<div class="tbl"><table>
+<tr><th>항목</th><th>비용</th><th>비고</th></tr>
+<tr><td>도메인 <code>gotgan.click</code> (Route 53 등록, 10/20)</td><td>연 $3</td><td>등록하면 호스팅 영역이 자동 생성됨</td></tr>
+<tr><td>Route 53 호스팅 영역</td><td>월 $0.50</td><td>A 레코드 · 인증서 검증 레코드</td></tr>
+<tr><td>ACM 공인 인증서</td><td>무료</td><td>검증 레코드가 남아 있는 한 ACM이 자동 갱신</td></tr>
 </table></div>
 
 <h3>왜 Vercel이 API까지 대신 받아 넘기나 (rewrite)</h3>
-<p>HTTPS 페이지(<code>https://gotgan.vercel.app</code>)에서 HTTP API(<code>http://gotgan-api.duckdns.org</code>)를 직접 부르면 브라우저가 <b>혼합 콘텐츠(Mixed Content)</b>로 막습니다. 그래서 브라우저는 <code>https://gotgan.vercel.app/api/...</code>만 부르고, Vercel 서버가 이를 DuckDNS 주소로 넘기게(rewrite) 합니다.</p>
+<p>브라우저는 <code>https://gotgan.vercel.app/api/...</code>만 부르고, Vercel 서버가 이를 <code>https://api.gotgan.click</code>으로 넘기게(rewrite) 합니다. API 주소도 이제 HTTPS라 혼합 콘텐츠(Mixed Content) 문제는 없지만, 같은 출처를 유지하려고 rewrite 구조는 그대로 둡니다.</p>
 <ul>
 <li>브라우저 입장에서 프론트와 API가 <b>같은 출처</b> → CORS 설정이 거의 필요 없음</li>
 <li>리프레시 토큰 쿠키(<code>Path=/api/auth</code>)가 퍼스트파티로 동작(08장)</li>
 <li>포트원 웹훅 주소도 <code>https://gotgan-ashy.vercel.app/api/payments/webhook</code>으로 HTTPS 주소를 줄 수 있음(07장)</li>
 <li>로그인 · 가입도 우리 React 화면 → <code>/api/auth/**</code> → user-service가 Keycloak을 클러스터 안에서 대신 호출합니다. <b>Keycloak 경로(<code>/auth/*</code>, <code>/realms/*</code>)는 rewrite하지 않고 외부에 노출하지 않습니다.</b></li>
+<li>Vercel ↔ AWS 구간도 HTTPS로 <b>암호화</b>됩니다(이전 DuckDNS 구성의 HTTP 평문 구간 해소).</li>
 </ul>
 
-<h3>1단계 · NLB에 고정 IP 붙이기 (구지훈)</h3>
-<p>DuckDNS는 <b>IP 주소(A 레코드)만</b> 등록할 수 있습니다. LBC가 만든 NLB는 DNS 이름만 있고, 다시 만들면(helm uninstall · ArgoCD 재생성) IP가 바뀝니다. Terraform으로 EIP를 미리 만들어 NLB에 지정하면 NLB를 다시 만들어도 IP가 유지됩니다.</p>
+<h3>EIP를 쓰는 이유 — A 레코드 대상 고정</h3>
+<p>LBC가 만든 NLB는 DNS 이름만 있고, 매일 클러스터를 다시 만들면(helm uninstall · ArgoCD 재생성) IP가 바뀝니다. Terraform으로 EIP를 <code>app/</code>(상시 폴더)에 미리 만들어 NLB에 지정하면 NLB를 다시 만들어도 IP가 유지되므로, <b>Route 53 A 레코드와 ACM 인증서를 매일 바꿀 필요가 없습니다</b>. A 레코드는 EIP <b>2개를 모두</b> 가리키므로 한 AZ가 죽어도 다른 IP로 접속됩니다(DuckDNS는 IP 하나만 등록 가능했음).</p>
+
+<h3>1단계 · 도메인 등록 (구지훈, 10/20 완료)</h3>
+<ol>
+<li>Route 53 콘솔 → 도메인 등록에서 <code>gotgan.click</code> 구매(연 $3)</li>
+<li>등록이 끝나면 같은 이름의 <b>호스팅 영역이 자동 생성</b>됩니다. Terraform은 이 영역을 새로 만들지 않고 <code>data</code>로 찾기만 합니다(새로 만들면 등록 기관 NS와 어긋남).</li>
+</ol>
+
+<h3>2단계 · Terraform: EIP · DNS · 인증서 (구지훈)</h3>
 <p class="cap">infra/terraform/app/eip.tf</p>
 <pre><code># 퍼블릭 서브넷(2a, 2c)마다 하나씩. NLB를 다시 만들어도 이 IP는 유지된다
 resource "aws_eip" "nlb" {
@@ -864,32 +879,53 @@ resource "aws_eip" "nlb" {
 }
 
 output "nlb_eip_allocation_ids" { value = aws_eip.nlb[*].id }          # Helm values에 넣을 값
-output "nlb_eip_public_ips"     { value = aws_eip.nlb[*].public_ip }   # DuckDNS에 넣을 값</code></pre>
-<p class="cap">deploy/helm/sesac-gojigi-app/values.yaml — gateway Service 어노테이션에 추가</p>
-<pre><code>    service.beta.kubernetes.io/aws-load-balancer-subnets: subnet-aaaa,subnet-cccc          # 퍼블릭 서브넷 2개
+output "nlb_eip_public_ips"     { value = aws_eip.nlb[*].public_ip }   # Route 53 A 레코드 대상</code></pre>
+<p class="cap">infra/terraform/app/dns.tf — 변수 domain_name = "gotgan.click" (요약)</p>
+<pre><code>data "aws_route53_zone" "main" { name = var.domain_name }        # 등록 시 자동 생성된 영역 조회
+
+resource "aws_route53_record" "api" {                            # api.gotgan.click A → EIP 2개 모두
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = "api.${var.domain_name}"
+  type    = "A"
+  ttl     = 300
+  records = aws_eip.nlb[*].public_ip
+}
+
+resource "aws_acm_certificate" "api" {                           # NLB와 같은 리전, DNS 검증
+  domain_name       = "api.${var.domain_name}"
+  validation_method = "DNS"
+}
+# + 검증 레코드 aws_route53_record.api_cert_validation
+# + aws_acm_certificate_validation.api (ISSUED 될 때까지 대기)
+
+output "api_host"            { ... }   # api.gotgan.click → vercel.json 목적지
+output "api_certificate_arn" { ... }   # Helm values ssl-cert 어노테이션 값</code></pre>
+<pre><code>cd infra/terraform/app &amp;&amp; terraform apply
+terraform output api_host api_certificate_arn
+aws acm describe-certificate --certificate-arn &lt;ARN&gt; --query Certificate.Status   # "ISSUED" 확인</code></pre>
+
+<h3>3단계 · Helm values: gateway Service 443 · 어노테이션 (구지훈)</h3>
+<p class="cap">deploy/helm/sesac-gojigi-app/values.yaml — gateway Service (템플릿 수정 없음)</p>
+<pre><code>  port: 443                             # NLB 443 TLS 리스너 → 파드 8080 (targetPort)
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-subnets: subnet-aaaa,subnet-cccc          # 퍼블릭 서브넷 2개
     service.beta.kubernetes.io/aws-load-balancer-eip-allocations: eipalloc-1111,eipalloc-2222  # 서브넷 수와 개수가 같아야 함 · 같은 AZ 순서
-    service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true  # ★ 없으면 파드가 없는 AZ 의 EIP 는 응답 없음 (10/14 검증)</code></pre>
-<p>NLB(LoadBalancer 타입 Service)는 <b>gateway에만</b> 붙입니다. Keycloak · 업무 서비스는 ClusterIP라 외부에서 닿지 않습니다.</p>
+    service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true  # ★ 없으면 파드가 없는 AZ 의 EIP 는 응답 없음 (10/14 검증)
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:ap-northeast-2:...   # terraform output api_certificate_arn
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"                           # 443 리스너에서 TLS 종료</code></pre>
+<p>NLB(LoadBalancer 타입 Service)는 <b>gateway에만</b> 붙입니다. Keycloak · 업무 서비스는 ClusterIP라 외부에서 닿지 않습니다. NLB는 L4라 HTTP→HTTPS 리다이렉트를 할 수 없으므로 <b>80번은 열지 않습니다</b>.</p>
 
-<h3>2단계 · DuckDNS 등록 (구지훈)</h3>
-<ol>
-<li><code>duckdns.org</code>에 GitHub 계정으로 로그인 → 하위 도메인 <code>gotgan-api</code> 생성</li>
-<li>현재 IP 칸에 EIP 중 하나(<code>terraform output nlb_eip_public_ips</code>의 첫 번째)를 입력. 학습 가이드 설정대로 NLB 교차 영역 분산이 켜져 있으므로 IP 하나로 들어와도 두 AZ의 게이트웨이 파드로 고르게 갑니다.</li>
-<li>화면의 <b>토큰은 비밀 값</b>입니다. GitHub Secrets(<code>DUCKDNS_TOKEN</code>)에만 두고, IP를 바꿀 때는 아래처럼 갱신합니다.</li>
-</ol>
-<pre><code>curl "https://www.duckdns.org/update?domains=gotgan-api&amp;token=${DUCKDNS_TOKEN}&amp;ip=${EIP}"
-# OK 가 나오면 성공. 확인: nslookup gotgan-api.duckdns.org</code></pre>
-
-<h3>3단계 · Vercel 연결 (프론트 담당 + 이경석(CI/CD))</h3>
+<h3>4단계 · Vercel 연결 (프론트 담당 + 이경석(CI/CD))</h3>
 <ol>
 <li>Vercel에서 GitHub 저장소 <code>sesac-final-1/gotgan-frontend</code> Import → <b>Root Directory는 비워 둠</b>(앱이 저장소 루트, 10/13 저장소 분리), Framework = Vite, Build = <code>npm run build</code>, Output = <code>dist</code></li>
 <li>main 머지 → 운영(Production) 배포, PR마다 <b>미리보기 URL</b>이 자동 생성 → 리뷰어가 화면을 바로 확인</li>
 <li>저장소 루트의 <code>vercel.json</code>으로 API rewrite와 SPA 새로고침 404를 해결</li>
+<li>rewrite 목적지를 <code>https://api.gotgan.click</code>으로 바꾼 커밋은 <b>3단계(443 리스너)가 적용된 같은 날</b> 배포합니다. 순서가 어긋나면 그 사이 API 호출이 실패합니다.</li>
 </ol>
 <p class="cap">gotgan-frontend/vercel.json — rewrite는 /api/* 하나뿐</p>
 <pre><code>{
   "rewrites": [
-    { "source": "/api/:path*", "destination": "http://gotgan-api.duckdns.org/api/:path*" },
+    { "source": "/api/:path*", "destination": "https://api.gotgan.click/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }</code></pre>
@@ -899,16 +935,23 @@ output "nlb_eip_public_ips"     { value = aws_eip.nlb[*].public_ip }   # DuckDNS
   server: { proxy: { "/api": "http://localhost:8080" } },   // 로컬 게이트웨이(또는 port-forward)
 });</code></pre>
 
-<div class="box warn"><b class="t">이 구성의 한계와 1주차 검증 항목</b>
+<h3>5단계 · 검증</h3>
+<pre><code>nslookup api.gotgan.click                               # EIP 2개가 모두 나와야 함
+curl -i https://api.gotgan.click/actuator/health        # 200 · 인증서 오류 없음
+curl -i https://gotgan.vercel.app/api/...               # Vercel rewrite 경유도 확인</code></pre>
+
+<div class="box warn"><b class="t">이 구성의 주의 사항</b>
 <ul>
-<li><b>Vercel → DuckDNS 구간은 암호화되지 않은 HTTP</b>입니다. 브라우저 ↔ Vercel은 HTTPS지만 Vercel ↔ AWS 구간에서 토큰·비밀번호가 평문으로 지나갑니다. dev 시연용으로만 쓰고, <b>테스트 계정에 실제 비밀번호를 쓰지 않습니다</b>.</li>
-<li>Vercel의 외부 rewrite가 HTTP 대상과 응답 시간에서 문제없이 동작하는지 <b>1주차 걷는 뼈대 단계(목업 서비스)에서 바로 확인</b>합니다. 막히면 NLB 앞에 CloudFront를 두어 HTTPS 주소(<code>https://xxxx.cloudfront.net</code>)를 만들고 그 주소로 rewrite하는 방법이 대안입니다.</li>
+<li>공개되는 것은 gateway(NLB 443)뿐입니다. <b>Keycloak 관리 콘솔 · Grafana · ArgoCD는 계속 비공개</b>(ClusterIP, <code>kubectl port-forward</code>)로 둡니다.</li>
+<li>소셜 로그인(USR-12)에 필요한 Keycloak HTTPS 공개 주소도 이 도메인으로 만들 수 있습니다. Keycloak <code>KC_HOSTNAME</code> · gateway <code>/realms/**</code> 라우트 · issuer 변경은 소셜 로그인 작업 때 이경석이 담당합니다. 그 전까지 <code>/realms/*</code>는 노출하지 않습니다.</li>
 <li>Vercel 무료(Hobby) 플랜은 개인·비상업 용도이고, GitHub <b>조직(Organization)의 비공개 저장소</b> 연결에 제약이 있을 수 있습니다. 저장소를 공개로 두거나 한 사람 계정에 연결하는 방식을 미리 확인합니다.</li>
 <li>게이트웨이가 보는 클라이언트 IP는 Vercel 서버 IP입니다. 실제 IP는 <code>X-Forwarded-For</code> 헤더로 읽습니다.</li>
+<li>ACM 검증 레코드(<code>api_cert_validation</code>)를 지우면 인증서 자동 갱신이 멈춥니다. 상시 폴더 <code>app/</code>에 그대로 둡니다.</li>
 <li>삭제 순서: EIP는 NLB가 잡고 있으므로 <b>gateway Service(NLB)를 먼저 지운 뒤</b> <code>app/</code>을 destroy 합니다.</li>
+<li>DuckDNS 관련 값(<code>scripts/duckdns-update.sh</code> · <code>bootstrap.yml</code> DuckDNS 갱신 단계 · Secret <code>DUCKDNS_TOKEN</code> · Variable <code>DUCKDNS_DOMAIN</code>)은 <b>삭제 예정</b>입니다(bootstrap은 이경석 확인 후).</li>
 </ul></div>
-<div class="box prod"><b class="t">여유가 있다면 · 실무에서는</b>
-API에도 HTTPS를 붙이려면 클러스터에 <b>cert-manager + Let's Encrypt</b>(DuckDNS는 TXT 레코드를 지원하므로 DNS-01 방식 웹훅 사용)로 인증서를 받아 게이트웨이에서 TLS를 종료할 수 있습니다(Could). ACM 인증서는 CNAME 검증이 필요해 DuckDNS 도메인에는 쓰기 어렵습니다. 실무에서는 Route53 도메인 + ACM 인증서 + ALB/CloudFront(+WAF)가 표준입니다(20장).</div>
+<div class="box prod"><b class="t">대안 · 실무에서는</b>
+채택하지 않은 대안: 클러스터에 <b>cert-manager + Let's Encrypt</b>로 인증서를 받아 게이트웨이에서 TLS를 종료하는 방법도 있지만, ACM은 무료 · 자동 갱신이고 NLB에서 바로 종료되어 클러스터에 추가 구성 요소가 필요 없습니다. 실무에서는 여기에 ALB/CloudFront + WAF를 앞단에 두는 구성이 표준입니다(20장).</div>
 </section>
 
 <!-- ============================================================ 05 -->
@@ -1797,7 +1840,7 @@ Cognito는 검토했으나 제외했습니다. 서버리스를 배치 · 로깅�
 <tr><td>새로고침 시</td><td colspan="2">앱 부팅 때 <code>/api/auth/refresh</code> 1회로 조용히 복구 (14장)</td></tr>
 </table></div>
 <div class="box rec"><b class="t">Vercel rewrite로 프론트와 API를 같은 출처로</b>
-05장 구성대로 브라우저는 <code>https://gotgan.vercel.app/api/*</code>만 호출하고 Vercel이 DuckDNS 주소로 넘기므로, 브라우저 입장에서 <b>같은 도메인</b>입니다. CORS 설정이 거의 필요 없고, 리프레시 토큰 쿠키(<code>Path=/api/auth</code>, httpOnly, Secure, SameSite=Strict)도 퍼스트파티로 동작합니다. 단, Vercel ↔ API 구간은 HTTP이므로 테스트 계정만 씁니다.</div>
+05장 구성대로 브라우저는 <code>https://gotgan.vercel.app/api/*</code>만 호출하고 Vercel이 <code>https://api.gotgan.click</code>으로 넘기므로, 브라우저 입장에서 <b>같은 도메인</b>입니다. CORS 설정이 거의 필요 없고, 리프레시 토큰 쿠키(<code>Path=/api/auth</code>, httpOnly, Secure, SameSite=Strict)도 퍼스트파티로 동작합니다. Vercel ↔ API 구간도 HTTPS(ACM 인증서)입니다.</div>
 <div class="box warn"><b class="t">Direct Grant(password grant)를 쓰는 이유와 한계</b>
 OAuth 2.1은 password grant를 <b>비권장</b>합니다. 표준은 Keycloak 로그인 화면으로 리다이렉트하는 Authorization Code + PKCE입니다. 이 프로젝트는 그래도 Direct Grant를 선택했습니다.
 <ul>
@@ -2492,10 +2535,10 @@ jobs:
 <p>(10/13 결정) 비밀 값은 <b>GitHub Secrets</b> 한 곳에만 둡니다. Secrets Manager · KMS · External Secrets Operator는 쓰지 않습니다 — 매일 클러스터를 다시 만드는 구조에서는 "시크릿도 워크플로가 만들어 넣는 것"이 가장 단순하고, 관리할 AWS 자원(KMS 키 · 시크릿 그릇) · 파드(ESO) · IRSA 역할이 줄어듭니다. 실무 방식(Vault · Secrets Manager + 자동 로테이션)은 20장.</p>
 <div class="tbl"><table>
 <tr><th>어디에</th><th>무엇을</th><th>누가 쓰나</th></tr>
-<tr><td><code>gotgan-config</code> Secrets</td><td><code>AWS_ROLE_ARN</code> · <code>DUCKDNS_TOKEN</code> · 아래 클러스터 시크릿 전부(<code>MYSQL_ROOT_PASSWORD</code> · <code>*_DB_PASSWORD</code> 8개 · <code>KEYCLOAK_CLIENT_SECRET</code> · <code>PORTONE_API_SECRET</code> · <code>PORTONE_WEBHOOK_SECRET</code> · <code>KC_BOOTSTRAP_ADMIN_USERNAME</code> · <code>KC_BOOTSTRAP_ADMIN_PASSWORD</code> · <code>GRAFANA_ADMIN_PASSWORD</code> · <code>ALERT_WEBHOOK_URL</code>)</td><td>infra-schedule · bootstrap · secrets-sync 워크플로</td></tr>
+<tr><td><code>gotgan-config</code> Secrets</td><td><code>AWS_ROLE_ARN</code> · 아래 클러스터 시크릿 전부(<code>MYSQL_ROOT_PASSWORD</code> · <code>*_DB_PASSWORD</code> 8개 · <code>KEYCLOAK_CLIENT_SECRET</code> · <code>PORTONE_API_SECRET</code> · <code>PORTONE_WEBHOOK_SECRET</code> · <code>KC_BOOTSTRAP_ADMIN_USERNAME</code> · <code>KC_BOOTSTRAP_ADMIN_PASSWORD</code> · <code>GRAFANA_ADMIN_PASSWORD</code> · <code>ALERT_WEBHOOK_URL</code>)</td><td>infra-schedule · bootstrap · secrets-sync 워크플로</td></tr>
 <tr><td><code>gotgan-backend</code> Secrets</td><td><code>AWS_ROLE_ARN</code> · <code>SONAR_TOKEN</code> · <code>SERVERLESS_ACCESS_KEY</code> · <code>CONFIG_REPO_TOKEN</code></td><td>backend · serverless 워크플로</td></tr>
 <tr><td>Vercel 환경 변수</td><td><code>VITE_*</code>(포트원 store id · channel key · Grafana URL)</td><td>프론트 빌드 (gotgan-frontend에는 GitHub Secret 없음)</td></tr>
-<tr><td>GitHub <b>Variables</b> (비밀 아님)</td><td><code>AWS_ACCOUNT_ID</code> · <code>AWS_REGION</code> · <code>EKS_CLUSTER_NAME</code> · <code>DUCKDNS_DOMAIN</code></td><td>모든 워크플로 (<code>${{ vars.X }}</code>)</td></tr>
+<tr><td>GitHub <b>Variables</b> (비밀 아님)</td><td><code>AWS_ACCOUNT_ID</code> · <code>AWS_REGION</code> · <code>EKS_CLUSTER_NAME</code></td><td>모든 워크플로 (<code>${{ vars.X }}</code>)</td></tr>
 <tr><td>로컬</td><td><code>.env.local</code>(커밋 금지) 또는 docker-compose 기본값(<code>local-pass</code>)</td><td>IDE 실행</td></tr>
 </table></div>
 <p><b>클러스터 시크릿은 <code>secrets-sync</code> 워크플로</b>(gotgan-config, <code>workflow_dispatch</code> + bootstrap에서 <code>workflow_call</code>)가 GitHub Secrets를 읽어 <code>kubectl create secret generic</code>으로 만듭니다. 매일 아침 bootstrap이 자동으로 실행하고, 값을 바꿨을 때는 GitHub Secret을 고친 뒤 secrets-sync를 수동 실행하고 해당 Deployment를 <code>rollout restart</code>합니다. 시크릿 YAML 파일은 저장소에 없습니다.</p>
@@ -2548,7 +2591,7 @@ jobs:
 <div class="tbl"><table>
 <tr><th>워크플로 (gotgan-config)</th><th>트리거</th><th>하는 일</th></tr>
 <tr><td><code>infra-schedule.yml</code> <b>up</b></td><td>cron <code>0 22 * * *</code>(UTC = KST 07:00) · <code>workflow_dispatch</code></td><td>OIDC 역할 → <code>terraform apply</code> <code>cluster/</code>(EKS · 노드 그룹 · EBS CSI · LBC · metrics-server) → <code>bootstrap.yml</code> 호출</td></tr>
-<tr><td><code>bootstrap.yml</code></td><td><code>workflow_call</code>(up 직후) · <code>workflow_dispatch</code>(수동 복구)</td><td>① <code>aws eks update-kubeconfig</code> → ② <code>deploy/k8s/</code>(namespace · configmap · db: MySQL · Redis · keycloak) <code>kubectl apply</code> → ③ <code>secrets-sync</code> 호출(파드는 Secret이 생기면 기동) → ④ <code>deploy/observability/</code> → ⑤ ArgoCD 설치(Helm) + <code>deploy/argocd/application.yaml</code> → ArgoCD가 gotgan-config의 Helm 차트로 서비스 9개 배포 → ⑥ gateway NLB가 상시 EIP에 붙었는지 확인(<code>kubectl get svc gateway-service</code>, NLB 어노테이션의 EIP 할당 ID) — EIP가 그대로라 DuckDNS는 바꾸지 않음</td></tr>
+<tr><td><code>bootstrap.yml</code></td><td><code>workflow_call</code>(up 직후) · <code>workflow_dispatch</code>(수동 복구)</td><td>① <code>aws eks update-kubeconfig</code> → ② <code>deploy/k8s/</code>(namespace · configmap · db: MySQL · Redis · keycloak) <code>kubectl apply</code> → ③ <code>secrets-sync</code> 호출(파드는 Secret이 생기면 기동) → ④ <code>deploy/observability/</code> → ⑤ ArgoCD 설치(Helm) + <code>deploy/argocd/application.yaml</code> → ArgoCD가 gotgan-config의 Helm 차트로 서비스 9개 배포 → ⑥ gateway NLB가 상시 EIP에 붙었는지 확인(<code>kubectl get svc gateway-service</code>, NLB 어노테이션의 EIP 할당 ID) — EIP가 그대로라 Route 53 · ACM은 바꾸지 않음 (기존 DuckDNS 갱신 단계는 삭제 예정)</td></tr>
 <tr><td><code>infra-schedule.yml</code> <b>down</b></td><td>cron <code>0 12 * * *</code>(UTC = KST 21:00) · <code>workflow_dispatch</code></td><td>① ArgoCD Application 삭제(서비스 파드 정리) → ② LoadBalancer Service 삭제(NLB 해제 — EIP는 남음) → ③ PVC 삭제(EBS 볼륨 과금 방지) → ④ <code>terraform destroy</code> <code>cluster/</code></td></tr>
 </table></div>
 <p class="cap">gotgan-config/.github/workflows/infra-schedule.yml (핵심만)</p>
@@ -2944,7 +2987,7 @@ gotgan-config/                              sesac-final-1/gotgan-config — Argo
 │   ├── app/                                EIP · S3 4 · SNS 3 · SQS(구독자별 + DLQ) · DynamoDB 2 · SES · SSM  ─ 상시
 │   ├── cluster/                            EKS · 노드 그룹 2개(app · db) · 애드온 · LBC · metrics-server · irsa  ─ 매일 07:00 apply · 21:00 destroy
 │   └── cicd/                               GitHub Actions OIDC 역할 (이경석 · 상태 의존 없음 — 순서 무관)  ─ 상시
-├── scripts/                                scale-nodes.sh(수동 보조: 시연 때 노드 3대) · duckdns-update.sh
+├── scripts/                                scale-nodes.sh(수동 보조: 시연 때 노드 3대) · duckdns-update.sh(삭제 예정)
 ├── docs/
 │   ├── adr/                                결정 기록 (0001-service-split.md · 0002-keycloak.md ...)
 │   ├── events.md                           이벤트 목록 · 봉투 형식 (10장)
@@ -3501,7 +3544,7 @@ spec:
 <tr><td><code>vpc/</code></td><td>provider.tf · main.tf · outputs.tf</td><td>VPC · 서브넷 4 · NAT · EKS 태그</td><td>cluster/ · app/ (퍼블릭 서브넷 ID → NLB 어노테이션)</td></tr>
 <tr><td><code>ecr/</code></td><td>provider.tf · main.tf · outputs.tf</td><td>저장소 9개(gateway · user · store · product · order · payment · review · settlement · admin) + 수명주기</td><td>backend.yml · Helm values</td></tr>
 <tr><td><code>cicd/</code></td><td>provider.tf · variables.tf · main.tf · outputs.tf</td><td>GitHub OIDC 공급자 · Actions 역할 (이경석 작성 · apply)</td><td>GitHub Secret <code>AWS_ROLE_ARN</code>. cluster/는 이 output이 아니라 역할 이름으로 조회</td></tr>
-<tr><td><code>app/</code> (상시)</td><td>provider.tf · data.tf(vpc 상태만 — cluster는 읽지 않음) · eip.tf · s3.tf · sns_sqs.tf · dynamodb.tf · ses.tf · ssm.tf · outputs.tf</td><td>05 · 09 · 10 · 11장의 AWS 자원 (아래 표). <code>kms.tf</code> · <code>secrets.tf</code>는 삭제됨(시크릿은 GitHub Secrets, 12장)</td><td>Helm values(EIP) · cluster/irsa.tf(S3 · SQS · SNS ARN) · serverless.yml(SSM)</td></tr>
+<tr><td><code>app/</code> (상시)</td><td>provider.tf · data.tf(vpc 상태만 — cluster는 읽지 않음) · eip.tf · dns.tf · s3.tf · sns_sqs.tf · dynamodb.tf · ses.tf · ssm.tf · outputs.tf</td><td>05 · 09 · 10 · 11장의 AWS 자원 (아래 표). <code>kms.tf</code> · <code>secrets.tf</code>는 삭제됨(시크릿은 GitHub Secrets, 12장)</td><td>Helm values(EIP · ACM 인증서 ARN) · vercel.json(api_host) · cluster/irsa.tf(S3 · SQS · SNS ARN) · serverless.yml(SSM)</td></tr>
 <tr><td><code>cluster/</code> (<b>매일 07:00 apply · 21:00 destroy</b>)</td><td>provider.tf · data.tf(vpc · app 상태 + Actions 역할 이름 조회) · variables.tf(<code>team_iam_users</code>) · main.tf · irsa.tf · ebs-csi-driver.tf · lbc.tf + iam_policy.json · metrics-server.tf · outputs.tf</td><td>EKS · 노드 그룹 2개(<code>app</code> t3.xlarge × 2, min 0 · max 3, 라벨 <code>tier=app</code> / <code>db</code> t3.medium × 1, min 0 · max 1, 2a 고정, 라벨 + 테인트 <code>tier=db:NoSchedule</code>) · access entries(팀원 전원 + Actions 역할) · IRSA 역할 · 애드온(vpc-cni · coredns · kube-proxy · EBS CSI · metrics-server — EKS 관리형) · Helm 릴리스(LBC 3.5.0)</td><td>다른 폴더는 읽지 않음(매일 사라짐) — 워크플로가 클러스터 이름으로 kubeconfig만 받음. IRSA 역할은 이름 고정이라 Helm values의 <code>roleArn</code> 불변</td></tr>
 </table></div>
 <p class="cap">gotgan-config/infra/terraform/app/ 이 만드는 자원</p>
@@ -3512,7 +3555,7 @@ spec:
 <tr><td><code>dynamodb.tf</code></td><td>테이블 2개: <code>sesac-gojigi-notifications</code>(알림 멱등 · 이력) · <code>sesac-gojigi-settlement-reports</code>(명세서 발송 이력 — PK <code>STORE#{storeId}</code> · SK <code>SETTLEMENT#{settlementId}</code>, 조건부 쓰기로 재발송 방지)</td></tr>
 <tr><td><code>ses.tf</code></td><td>발신 도메인/주소 인증 (샌드박스, 수신자도 인증)</td></tr>
 <tr><td><code>irsa.tf</code> → <b>cluster/</b>로 이동(10/13: 신뢰 정책이 그날의 OIDC 공급자를 가리켜 클러스터와 함께 재생성)</td><td><code>sesac-gojigi-{service}-irsa</code>: user(sqs) · store(sns · s3 seller-docs · s3 images/stores) · product(sqs · s3 images) · order(sns) · review(sqs · s3 images) · settlement(sqs · sns · s3 reports). grafana(CloudWatch 읽기)는 박지연이 <code>cluster/irsa_grafana.tf</code>로. gateway · payment · admin은 없음. <code>kms:Decrypt</code>는 없음(KMS 미사용)</td></tr>
-<tr><td><code>ssm.tf</code> · <code>eip.tf</code></td><td>Lambda가 읽을 ARN(<code>/sesac-gojigi/dev/...</code>) · 게이트웨이 NLB용 EIP</td></tr>
+<tr><td><code>ssm.tf</code> · <code>eip.tf</code> · <code>dns.tf</code></td><td>Lambda가 읽을 ARN(<code>/sesac-gojigi/dev/...</code>) · 게이트웨이 NLB용 EIP · Route 53 A 레코드 + ACM 인증서(05장)</td></tr>
 </table></div>
 <div class="box warn"><b class="t">Terraform에는 비밀 값을 쓰지 않기</b>
 Terraform 변수 · 리소스에 비밀번호를 넣으면 그 값이 <b>상태 파일(tfstate)에 평문으로</b> 남습니다. 이 프로젝트의 Terraform은 비밀 값을 전혀 다루지 않습니다 — DB 비밀번호 · 포트원 키 · Keycloak 시크릿은 GitHub Secrets에만 있고 <code>secrets-sync</code> 워크플로가 클러스터에 직접 넣습니다(12장). <code>infra-schedule</code>가 쓰는 OIDC 역할 ARN도 비밀이 아니지만 관례상 Secret에 둡니다.</div>
@@ -3628,7 +3671,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><th>등급</th><th>기능</th></tr>
 <tr><td><span class="tag must">Must</span></td><td>자체 로그인 · 가입(Keycloak, 역할 3종) · 입점 신청(서류) · 승인 · 반려 · 판매자 전환 · 카테고리(product) · 수수료(settlement) · 상품 CRUD(옵션 · 재고) · 목록 · 상세 · QueryDSL 검색 · 장바구니 · 주문 · 포트원 테스트 결제 Saga(검증 · 자동 취소 · 결제 대기 만료) · 발주확인 · 송장 수기 · 배송완료(status) · 구매확정(스케줄러) · <b>취소 · 반품 · 교환(status)</b> · <b>리뷰(사진 · 별점)</b> · 정산 집계 · 지급 · 판매자 · 관리자 대시보드(조합) · 헬스 체크 대시보드 · 장애 격리 · 무중단 배포 시연</td></tr>
 <tr><td><span class="tag should">Should</span></td><td>포인트 적립 · 사용(5%) · 회원등급 · 상품문의 · 답변 · 리뷰 관리(판매자 검토 요청 · 관리자 블라인드) · 보완요청 · 자동 반려 · 스토어 휴면/정지 → 상품 숨김 · 지급 보류 · 알림 메일 Lambda · 정산 명세서 Lambda · SonarQube Cloud · 배송지 관리</td></tr>
-<tr><td><span class="tag could">Could</span></td><td>FAQ 관리자 편집 · 로그 아카이브 Lambda · <code>blacklist</code> 즉시 로그아웃 · Outbox · 속도 제한 · ArgoCD 롤백 시연 · API HTTPS(cert-manager)</td></tr>
+<tr><td><span class="tag could">Could</span></td><td>FAQ 관리자 편집 · 로그 아카이브 Lambda · <code>blacklist</code> 즉시 로그아웃 · Outbox · 속도 제한 · ArgoCD 롤백 시연 · API HTTPS(10/20 Route 53 · ACM으로 적용, 05장)</td></tr>
 <tr><td><span class="tag wont">Won't</span></td><td>찜 · 쿠폰 · 비회원 구매(TODO) · 회원 신고 · 오토스케일링 · 파티셔닝 · CQRS/캐시 · Elasticsearch · NL2SQL · 썸네일 Lambda · 택배사 연동 · 실결제 · 소셜 로그인 · Cognito · 모바일 앱</td></tr>
 </table></div>
 
@@ -3637,9 +3680,9 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <div class="tbl"><table>
 <tr><th>주차 · 기간 · 목표</th><th>구지훈</th><th>이경석</th><th>박지연</th></tr>
 <tr><td><b>1주차</b><br>10/12 ~ 10/16<br><b>인프라 ①</b> AWS 기반</td><td>IAM · global/s3 · vpc · ecr(9) · app/eip · cluster(노드 그룹 2개: app t3.xlarge × 2 · db t3.medium × 1 · access entries · EBS CSI · LBC · metrics-server) · <code>02-networkpolicy.yaml</code>(DB 티어) · EIP + DuckDNS · 팀원 kubectl 접근 · GitHub Secrets · Variables 등록(3개 저장소) · <code>docs/secrets.md</code> / payment: API 계약 + DDL / 프론트: 골격(목업 이식 시작: 라우터 · 레이아웃 · axios · Query)</td><td>클러스터 없이 할 수 있는 것: 저장소 3개 생성 · 브랜치 보호 · PR 템플릿 · <b>3개 저장소 CI 골격 · 레포 간 토큰(<code>CONFIG_REPO_TOKEN</code>)</b> · cicd/(OIDC 역할) 작성 · apply · <code>AWS_ROLE_ARN</code> 등록 · Keycloak realm 설계(역할 · 매퍼 · <code>gotgan-backend</code>) · gateway 골격 · 로컬 docker-compose로 Keycloak 로그인 확인 / 구매 흐름: order · review API · 이벤트 계약 + DDL · 로컬 docker-compose로 <b>Saga 골격</b>(order → product → payment 스텁) · 서비스 템플릿 점검</td><td>관측성 매니페스트 작성(Prometheus · Loki · Grafana · Zipkin · kube-state-metrics) · <code>logback-spring.xml</code> 공통 형식 · product · store API 계약 · DDL</td></tr>
-<tr><td colspan="4"><b>1주차 완료 기준</b>: EKS가 떠 있고 팀원 전원 kubectl 가능 · ECR 9개 · EIP + DuckDNS 주소 확정 · 도메인별 API · 이벤트 계약과 DDL 리뷰 완료</td></tr>
+<tr><td colspan="4"><b>1주차 완료 기준</b>: EKS가 떠 있고 팀원 전원 kubectl 가능 · ECR 9개 · EIP + DuckDNS 주소 확정(10/20 Route 53 · ACM으로 전환) · 도메인별 API · 이벤트 계약과 DDL 리뷰 완료</td></tr>
 <tr><td><b>2주차</b><br>10/19 ~ 10/23<br><b>인프라 ②</b> 인수인계 · 걷는 뼈대</td><td>app/ 자원(S3 4종 · SNS 토픽 3 · SQS + DLQ · DynamoDB 2 · SSM) · <code>cluster/irsa.tf</code>(서비스별 IRSA) · MySQL(스키마 8 · 서비스별 계정) · Redis(AOF + PVC) · <b><code>secrets-sync</code> · <code>infra-schedule</code> · <code>bootstrap</code> 워크플로</b>(07:00 up · 21:00 down 1회 검증) · <b>인프라 인수인계</b>(산출물 목록 · 접근 방법 · 주소를 문서로 공유) → 이경석 · 박지연이 그 위에 연결 / 프론트: 골격 완료 · 목업 화면 이식(라우트 · 레이아웃 · 페이지, MSW 픽스처 — API · 훅은 각 도메인 담당)</td><td>Actions 실제 job(테스트 → Sonar → ECR push → gotgan-config <code>values.yaml</code> 태그 커밋) · ArgoCD(gotgan-config 감시) · Keycloak 배포(secrets-sync Secret · realm 자리표시자 · 시드 계정 스크립트) · <b>목업 서비스 1개</b> 파이프라인 · Vercel 연결 / 구매 흐름: 로컬에서 Saga 골격 동작 확인 · 공통 템플릿(ApiResponse · 에러 핸들러 · <code>@CurrentUser</code>) 전 서비스 적용</td><td>monitoring 스택 배포 · 목업 서비스 로그/지표 확인 · <b>System Status v1</b>(Stat · State timeline)</td></tr>
-<tr><td colspan="4"><b>2주차 완료 기준 (걷는 뼈대)</b>: 목업 서비스 1개가 <code>https://gotgan.vercel.app/api/...</code>로 응답(<b>Vercel → DuckDNS → NLB → gateway → 서비스</b>) · Grafana에 로그 · 지표가 보임 · main에 push하면 자동 배포(Actions → ECR → gotgan-config 태그 커밋 → ArgoCD) · 아침 자동 생성(infra-schedule → bootstrap) 1회 성공 · 인프라 인수인계 완료</td></tr>
+<tr><td colspan="4"><b>2주차 완료 기준 (걷는 뼈대)</b>: 목업 서비스 1개가 <code>https://gotgan.vercel.app/api/...</code>로 응답(<b>Vercel → DuckDNS → NLB → gateway → 서비스</b>, 10/20 Route 53 · ACM으로 전환) · Grafana에 로그 · 지표가 보임 · main에 push하면 자동 배포(Actions → ECR → gotgan-config 태그 커밋 → ArgoCD) · 아침 자동 생성(infra-schedule → bootstrap) 1회 성공 · 인프라 인수인계 완료</td></tr>
 <tr><td><b>3주차</b><br>10/26 ~ 10/30<br><b>도메인 ①</b> 핵심 CRUD + 화면</td><td>settlement 골격 + <code>category_commission</code> · admin 골격(<code>/api/admin/**</code> → <code>/internal/**</code>, Resilience4j) · SonarQube Cloud 연동(Actions <code>sonar</code> · PR 코멘트) · SES 검증 / payment: dev 배포</td><td>user-service 가입 · 로그인 · refresh · 로그아웃(Keycloak 대리 호출) · 배송지 · gateway 인증(<code>oauth2ResourceServer</code> · 헤더 주입 · 라우트 권한) · 화면: 로그인 · 가입 · 라우트 가드 / 구매 흐름: 장바구니(MySQL <code>cart_item</code> 원본 + Redis 캐시, <code>redisCart</code> 서킷 · <b>Redis 폴백</b>) · 주문서 금액 계산(가격은 product에서 재확인) · order · review dev 배포 · 화면: 장바구니 · 주문서</td><td>product: 카테고리 · 상품 · 옵션 CRUD · 목록 · 상세 · QueryDSL 검색 · 이미지 presign / store: 입점 신청 · 서류 presign · 심사 <code>/internal</code> API · 화면: 상품 · 입점 신청</td></tr>
 <tr><td colspan="4"><b>3주차 완료 기준 (E2E #1)</b>: 9개 서비스 dev 배포 · 가입 · 로그인 → 입점 신청 → 관리자 승인(admin → store) → 상품 등록 → 구매자가 장바구니에 담기</td></tr>
 <tr><td><b>4주차</b><br>11/02 ~ 11/06<br><b>도메인 ②</b> Saga · 이벤트 · 리뷰</td><td>admin 입점 관리 · 카테고리 · 수수료 관리 API · settlement <code>OrderItemConfirmed</code> 구독 · Lambda 배포 역할 · 화면: 관리자 입점 심사 · 카테고리 / payment: 포트원 V2 검증 · 취소 · 웹훅</td><td><code>StoreApproved</code> 구독(Admin API로 SELLER · <code>store_id</code>) · 포인트 사용 차감 · 환원 <code>/internal/points/use</code>(sagaId 멱등) · <code>OrderPaid</code> 구독 5% 적립 · serverless 배포 워크플로 · 화면: 마이페이지 회원정보 · 배송지 / 구매 흐름: <b>주문 생성 Saga</b>(PENDING → 포인트 → 재고 → 결제 준비 → 포트원 결제창 → verify → PAID, 역순 보상) · 결제 대기 만료 스케줄러 · <code>OrderPaid</code> 발행 · 리뷰 CRUD(사진 · 별점 · sanitizer) · 화면: 결제 · 주문 내역 · 리뷰</td><td>재고 예약/해제 <code>/internal/stock/reservations</code> · <code>StoreApproved</code> · <code>StoreStatusChanged</code> 발행 · 스토어 홈 · 공통 로그 형식 점검 · RED 대시보드 · System Status 완성(gateway <code>up</code> · 재시작 수) · 화면: 판매자 상품 · 스토어 설정</td></tr>
@@ -3879,6 +3922,12 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>3</td><td><b>이경석 업무 집중 대응</b>: 우선순위 고정(user · gateway 인증 → order Saga → review), 구매 흐름 PR 공동 리뷰어 = 구지훈, order Saga · payment는 구지훈과 API · 이벤트 계약을 먼저 확정</td><td>CI/CD · Keycloak · user · gateway에 order · review가 더해짐(19장 위험 요소)</td></tr>
 </table></div>
 
+<h3>10/20 API 공개 주소 전환</h3>
+<div class="tbl"><table>
+<tr><th>#</th><th>결정</th><th>이유 · 근거</th></tr>
+<tr><td>1</td><td><b>API 공개 주소 DuckDNS → Route 53 · ACM(<code>api.gotgan.click</code>), gateway NLB 443 TLS</b> — 05장 재작성. 도메인 <code>gotgan.click</code> Route 53 등록, <code>app/dns.tf</code>(A 레코드 → EIP 2개 · ACM DNS 검증), Helm gateway Service <code>port: 443</code> + ssl-cert · ssl-ports 어노테이션, <code>vercel.json</code> 목적지 https. DuckDNS 스크립트 · bootstrap 단계 · <code>DUCKDNS_TOKEN</code> · <code>DUCKDNS_DOMAIN</code>은 삭제 예정</td><td>Vercel ↔ AWS 평문 구간 해소, 소셜 로그인(USR-12)용 Keycloak HTTPS 공개 주소 확보, A 레코드가 EIP 2개를 모두 가리킴. 비용 연 $3 + 월 $0.50</td></tr>
+</table></div>
+
 <div class="box rec"><b class="t">ADR로 남기기</b>
 위 결정 중 아키텍처에 영향을 주는 것(서비스 9개 분할 · admin BFF · 카테고리 위치 · Keycloak 대리 로그인 · 대시보드 부분 응답 · Resilience4j 표준 · 서버리스 범위 · 제외 목록 · 저장소 3분할 · GitHub Secrets 단일 소스 · 인프라 일일 스케줄 · 장바구니 MySQL 원본 + Redis 캐시 · 3티어 · db 노드 분리 · NetworkPolicy)은 <code>gotgan-config/docs/adr/0001-service-split.md</code>처럼 <b>ADR</b>(결정 · 배경 · 검토한 대안 · 결과)로 저장소에 남기세요. 결정이 바뀌면 기존 ADR을 고치지 말고 새 ADR에서 "대체함"으로 연결합니다.</div>
 </section>
@@ -3920,7 +3969,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>숙련도 차이</td><td>막혀서 일정 지연, 경험자에게 작업 쏠림</td><td>1주차 입문 트랙(17장), 페어 지정, good-first-issue, 작은 PR, 30분 규칙</td></tr>
 <tr><td>포트원 V1/V2 혼동</td><td>블로그 코드(<code>IMP.request_pay</code>)가 동작 안 함</td><td>V2 공식 문서만 참고, 07장 흐름 고정</td></tr>
 <tr><td>결제 검증 누락</td><td>브라우저에서 금액을 바꿔 싸게 결제</td><td>payment가 포트원 조회 결과(상태 + 금액)로만 검증, 불일치 시 자동 취소</td></tr>
-<tr><td>Vercel rewrite · DuckDNS</td><td>API가 504/연결 실패, NLB 재생성 후 접속 불가</td><td>1주차에 경로 검증, EIP 고정(05장), 막히면 CloudFront 대안</td></tr>
+<tr><td>Vercel rewrite · Route 53 · ACM</td><td>API가 504/연결 실패, NLB 재생성 후 접속 불가, 인증서 오류</td><td>EIP 고정 + A 레코드 상시(05장), 인증서 ISSUED · 검증 레코드 유지 확인, <code>curl https://api.gotgan.click/actuator/health</code></td></tr>
 <tr><td>Flyway 체크섬 오류</td><td><code>Migration checksum mismatch</code>로 파드 기동 실패</td><td>적용된 마이그레이션은 수정 금지, 새 버전 파일로 (06장)</td></tr>
 </table></div>
 </section>
@@ -3941,7 +3990,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>GraphQL · 전용 BFF 서비스</td><td>admin · 대시보드 조합 모듈로 충분</td><td>화면 종류가 많으면 프론트별 전용 API 계층을 따로 운영</td></tr>
 <tr><td rowspan="3">트래픽 · 네트워크</td><td>서비스 메시(Istio, Linkerd)</td><td>사이드카 자원, 복잡도 (Resilience4j로 대체)</td><td>서비스 간 mTLS, 재시도 · 서킷 브레이커 · 트래픽 분할을 코드 밖에서</td></tr>
 <tr><td>NetworkPolicy (업무 서비스까지)</td><td>DB 티어에는 적용함(04장 — 3306 · 6379는 백 티어만, DB egress 없음). 업무 서비스 간 정책은 여유 시</td><td>업무 서비스는 게이트웨이에서 오는 트래픽만 허용 → 헤더 신뢰 전제를 네트워크로 보장. 네임스페이스 기본 deny + 서비스별 allow</td></tr>
-<tr><td>Route53 + ACM + WAF</td><td>유료 도메인 없음 → DuckDNS · Vercel로 대체(05장)</td><td>자체 도메인 HTTPS, CloudFront/ALB 앞단 웹 방화벽(봇 · SQL 인젝션 차단)</td></tr>
+<tr><td>WAF</td><td>Route 53 + ACM은 10/20부터 범위 안(05장). NLB(L4)에는 WAF를 붙일 수 없음</td><td>CloudFront/ALB 앞단 웹 방화벽(봇 · SQL 인젝션 차단)</td></tr>
 <tr><td rowspan="3">확장 · 배포</td><td><b>HPA 오토스케일</b> / KEDA / Karpenter</td><td>예매 · 경매처럼 <b>동시성이 폭주하는 도메인이 아님</b>, 노드 고정 → 오토스케일 시연 제외</td><td>조회(R) API 부하 시 CPU · 큐 길이 기반 파드 자동 확장, 필요한 만큼 노드를 빠르게 추가(Spot 혼합)</td></tr>
 <tr><td>Argo Rollouts (카나리 · 블루그린)</td><td>사용자 없음 (롤링 무중단 배포로 시연)</td><td>새 버전에 트래픽 5%만 보내고 지표가 나쁘면 자동 롤백</td></tr>
 <tr><td>멀티 환경(dev/stg/prod) + ApplicationSet</td><td>환경 1개</td><td>같은 차트를 환경별 값으로, PR 머지 = stg, 태그 = prod 승격</td></tr>
@@ -4015,8 +4064,9 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>ADR</td><td>Architecture Decision Record. 결정 · 배경 · 대안 · 결과를 짧게 남긴 문서</td></tr>
 <tr><td>Flyway</td><td>번호 붙은 SQL 파일을 순서대로 한 번씩 실행해 DB 스키마 버전을 관리하는 도구</td></tr>
 <tr><td>포트원 (PortOne)</td><td>여러 PG사를 하나의 API로 연결해 주는 결제 연동 서비스. 테스트 채널로 사업자 없이 결제 흐름 개발 가능</td></tr>
-<tr><td>EIP (Elastic IP)</td><td>AWS의 고정 공인 IPv4 주소. NLB에 붙여 DuckDNS가 가리킬 IP를 고정</td></tr>
-<tr><td>DuckDNS</td><td>무료 동적 DNS. <code>{이름}.duckdns.org</code>를 IP 주소 하나에 연결</td></tr>
+<tr><td>EIP (Elastic IP)</td><td>AWS의 고정 공인 IPv4 주소. NLB에 붙여 Route 53 A 레코드가 가리킬 IP를 고정</td></tr>
+<tr><td>Route 53</td><td>AWS의 DNS · 도메인 등록 서비스. <code>gotgan.click</code> 등록, <code>api.gotgan.click</code> A 레코드 → EIP 2개</td></tr>
+<tr><td>ACM (AWS Certificate Manager)</td><td>AWS 공인 TLS 인증서 발급 · 자동 갱신(무료). DNS 검증으로 발급해 NLB 443 리스너에서 TLS 종료</td></tr>
 <tr><td>Vercel rewrite</td><td>Vercel이 특정 경로(<code>/api/*</code>) 요청을 다른 주소로 대신 전달하는 기능. 브라우저는 같은 출처로 인식</td></tr>
 <tr><td>Mixed Content</td><td>HTTPS 페이지가 HTTP 자원을 부르는 것. 브라우저가 차단</td></tr>
 </table></div>

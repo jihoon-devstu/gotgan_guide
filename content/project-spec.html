@@ -219,7 +219,7 @@ svg .ah2{fill:var(--point)}
 <text x="10" y="28" class="lbl">사용자 · 엣지</text>
 <rect class="bx" x="110" y="36" width="120" height="44"/><text x="170" y="55" text-anchor="middle" class="b">브라우저</text><text x="170" y="71" text-anchor="middle" class="s">구매자·판매자·관리자</text>
 <rect class="bx" x="262" y="36" width="160" height="44"/><text x="342" y="55" text-anchor="middle" class="b">Vercel (HTTPS)</text><text x="342" y="71" text-anchor="middle" class="s">React · /api/* rewrite</text>
-<rect class="bx" x="454" y="36" width="160" height="44"/><text x="534" y="55" text-anchor="middle" class="b">DuckDNS</text><text x="534" y="71" text-anchor="middle" class="s">gotgan-api → EIP</text>
+<rect class="bx" x="454" y="36" width="160" height="44"/><text x="534" y="55" text-anchor="middle" class="b">Route 53 · ACM</text><text x="534" y="71" text-anchor="middle" class="s">api.gotgan.click → EIP</text>
 <rect class="bx" x="646" y="36" width="130" height="44"/><text x="711" y="55" text-anchor="middle" class="b">NLB</text><text x="711" y="71" text-anchor="middle" class="s">LBC · EIP 고정</text>
 <rect class="bx" x="860" y="36" width="166" height="44"/><text x="943" y="55" text-anchor="middle" class="b">포트원 V2</text><text x="943" y="71" text-anchor="middle" class="s">테스트 채널 · 결제창</text>
 <path class="ln" d="M230,58 H258" marker-end="url(#a1)"/>
@@ -283,7 +283,7 @@ svg .ah2{fill:var(--point)}
 <h3>계층별 구성</h3>
 <div class="tbl"><table>
 <tr><th>계층</th><th>구성 요소</th><th>역할</th></tr>
-<tr><td>엣지</td><td>Vercel · DuckDNS · EIP · NLB</td><td><ul><li>Vercel: 프론트 정적 파일 + <code>/api/*</code>를 API로 rewrite → 브라우저 입장 같은 출처</li><li>DuckDNS: API 도메인 → NLB 고정 IP(EIP)</li><li>NLB: LBC가 생성, 교차 영역 분산</li></ul></td></tr>
+<tr><td>엣지</td><td>Vercel · Route 53 · ACM · EIP · NLB</td><td><ul><li>Vercel: 프론트 정적 파일 + <code>/api/*</code>를 API로 rewrite → 브라우저 입장 같은 출처</li><li>Route 53: <code>api.gotgan.click</code> A 레코드 → NLB 고정 IP(EIP 2개)</li><li>NLB: LBC가 생성, 교차 영역 분산, 443 리스너에서 ACM 인증서로 TLS 종료 → gateway 8080</li></ul></td></tr>
 <tr><td>게이트웨이</td><td>gateway-service ×2</td><td><ul><li>단일 진입점, 경로 → 서비스 라우팅 (03장 · 8-3 라우팅 표)</li><li>Keycloak 발급 JWT를 JWKS로 검증 (Spring Security <code>oauth2ResourceServer</code>)</li><li>클레임 → <code>X-User-Id</code> · <code>X-User-Roles</code> · <code>X-Store-Id</code> 헤더 주입</li></ul></td></tr>
 <tr><td>인증</td><td>Keycloak (realm <code>gotgan</code>)</td><td><ul><li>계정(이메일 · 비밀번호) · 역할 BUYER · SELLER · ADMIN · 토큰 발급</li><li>ClusterIP만 — 로그인 · 가입은 우리 React 화면 → user-service가 대리 호출</li></ul></td></tr>
 <tr><td>업무 서비스 (백 티어)</td><td>user · store · product · order · payment · review · settlement · admin — EKS <code>app</code> 노드(t3.xlarge ×2)</td><td><ul><li>기능(데이터 소유권) 기준 분할, 데이터까지 완전히 독립</li><li>ClusterIP — 외부 직접 접근 불가, 서비스 간 동기 호출은 <code>/internal/**</code>만</li><li>admin은 DB 없음 — 관리자 화면용 조합 계층(BFF)</li></ul></td></tr>
@@ -331,7 +331,7 @@ svg .ah2{fill:var(--point)}
 <h3>대표 흐름: 주문 · 결제 Saga</h3>
 <div class="tbl"><table>
 <tr><th>#</th><th>단계</th><th>결과</th></tr>
-<tr><td>1</td><td>브라우저 → Vercel → DuckDNS → NLB → gateway (Keycloak JWT 검증) → order</td><td>인증된 요청만 통과</td></tr>
+<tr><td>1</td><td>브라우저 → Vercel → <code>https://api.gotgan.click</code>(Route 53) → NLB 443(ACM TLS) → gateway (Keycloak JWT 검증) → order</td><td>인증된 요청만 통과</td></tr>
 <tr><td>2</td><td><code>POST /api/orders</code>: 주문 PENDING → user 포인트 차감(사용 시) → product 재고 예약 → payment 결제 준비(READY · paymentId)</td><td>결제 대기 / 실패 시 역순 보상 · FAILED</td></tr>
 <tr><td>3</td><td>브라우저가 포트원 결제창으로 테스트 결제</td><td>—</td></tr>
 <tr><td>4</td><td><code>POST /api/orders/{orderNo}/payment/confirm</code> → order → payment <code>/internal/payments/verify</code>(포트원 조회 금액 = 기대 금액)</td><td>PAID / 불일치 시 포트원 자동 취소 → 재고 해제 → 포인트 환원 → FAILED</td></tr>
@@ -581,7 +581,7 @@ gotgan-config/           sesac-final-1/gotgan-config — ArgoCD가 감시하는 
 ├── deploy/              k8s 기본 계층(keycloak 포함) · helm 앱 계층 · argocd        (2-4)
 │   └── observability/   Prometheus · Loki · Zipkin · Grafana · System Status     (2-5)
 ├── infra/terraform/     AWS 자원 (cluster/ 는 매일 07:00 apply · 21:00 destroy)    (2-3)
-├── scripts/             scale-nodes.sh(수동 보조) · duckdns-update.sh
+├── scripts/             scale-nodes.sh(수동 보조) · duckdns-update.sh(삭제 예정)
 ├── docs/                adr/ · events.md · secrets.md · README.md · CONVENTION.md(발췌본)
 ├── .github/             workflows(infra · infra-schedule · bootstrap · secrets-sync · security)   (2-4)
 └── .gitignore · README.md</code></pre>
@@ -628,7 +628,7 @@ gotgan-config/           sesac-final-1/gotgan-config — ArgoCD가 감시하는 
 </ul>
 <h4>패키지 구조</h4>
 <pre><code>gotgan-frontend/
-├── vercel.json              /api/* → DuckDNS rewrite · SPA 새로고침
+├── vercel.json              /api/* → https://api.gotgan.click rewrite · SPA 새로고침
 ├── vite.config.js           로컬 /api 프록시 → localhost:8080
 ├── .env.example             VITE_PORTONE_STORE_ID · VITE_PORTONE_CHANNEL_KEY · VITE_GRAFANA_URL
 └── src/
@@ -678,10 +678,10 @@ gotgan-config/           sesac-final-1/gotgan-config — ArgoCD가 감시하는 
 <tr><td>비용 (6주 · 매일 14h)</td><td>EKS 제어 평면 약 $60 · app t3.xlarge ×2 약 $245 · <b>db t3.medium ×1 약 $31</b> · NAT 약 $60~ · NLB 약 $15 · EIP 약 $10 · 기타 $20 이하 → <b>합계 약 $440</b> (24h 상시였다면 약 $690. 10/14 이전 t3.large ×2 기준 약 $320 / $470).</td></tr>
 <tr><td>애드온</td><td>VPC CNI · CoreDNS · kube-proxy · EBS CSI(IRSA) · metrics-server · LBC(IRSA) — External Secrets 없음(시크릿은 GitHub Secrets)</td></tr>
 <tr><td>로드 밸런서</td><td>gateway Service → LBC → NLB(internet-facing · ip 타깃 · 교차 영역) + <b>EIP 2개 고정</b></td></tr>
-<tr><td>도메인</td><td>API: DuckDNS → EIP · 프론트: Vercel 기본 도메인</td></tr>
+<tr><td>도메인</td><td>API: <code>api.gotgan.click</code>(Route 53 등록 도메인 <code>gotgan.click</code>, A 레코드 → EIP 2개) · ACM 인증서(NLB 443 TLS 종료) · 프론트: Vercel 기본 도메인</td></tr>
 <tr><td>이름 규칙</td><td><code>sesac-gojigi-*</code> · 태그 <code>Project=sesac-gojigi</code> 모든 자원</td></tr>
 <tr><td>일일 스케줄</td><td><code>infra-schedule</code> 워크플로(gotgan-config): KST 07:00 <code>cluster/</code> apply → <code>bootstrap</code>(k8s 기본 계층 · secrets-sync · 관측성 · ArgoCD), KST 21:00 ArgoCD 앱 · LB Service · PVC 삭제 → <code>cluster/</code> destroy. vpc · ecr · cicd · app은 상시. 매일 아침 빈 DB → Flyway 시드로 복원</td></tr>
-<tr><td>시크릿</td><td><b>GitHub Secrets 단일 소스</b> → <code>secrets-sync</code> 워크플로가 K8s Secret 생성. Secrets Manager · KMS · ESO 없음. 비밀 아닌 값은 GitHub Variables(<code>AWS_ACCOUNT_ID</code> · <code>AWS_REGION</code> · <code>EKS_CLUSTER_NAME</code> · <code>DUCKDNS_DOMAIN</code>), 목록은 <code>docs/secrets.md</code></td></tr>
+<tr><td>시크릿</td><td><b>GitHub Secrets 단일 소스</b> → <code>secrets-sync</code> 워크플로가 K8s Secret 생성. Secrets Manager · KMS · ESO 없음. 비밀 아닌 값은 GitHub Variables(<code>AWS_ACCOUNT_ID</code> · <code>AWS_REGION</code> · <code>EKS_CLUSTER_NAME</code>), 목록은 <code>docs/secrets.md</code></td></tr>
 <tr><td>비용 가드</td><td>클러스터 매일 07:00 생성 · 21:00 삭제 · 발표 후 전체 destroy · Budgets · Cost Explorer는 연계 계정이라 사용 불가(관리 계정 소관)</td></tr>
 </table></div>
 <h4>자원 목록</h4>
@@ -693,10 +693,11 @@ gotgan-config/           sesac-final-1/gotgan-config — ArgoCD가 감시하는 
 <tr><td>SQS</td><td>구독자별 큐 (user · product · settlement · review · 알림 Lambda · 명세서 Lambda) + DLQ(최대 수신 3) · 필터 정책(본문 <code>eventType</code>) · raw delivery</td><td>이벤트 소비</td></tr>
 <tr><td>DynamoDB</td><td><code>sesac-gojigi-notifications</code>(PK USER# · SK 시각#eventId · TTL 90일 — 알림 멱등 · 이력) · <code>sesac-gojigi-settlement-reports</code>(PK STORE#{storeId} · SK SETTLEMENT#{settlementId} — 명세서 발송 이력 · 멱등) · On-Demand · 그 외 테이블 없음</td><td>Lambda 데이터 · 멱등</td></tr>
 <tr><td>SES</td><td>발신 이메일 자격 증명 · 샌드박스(검증된 주소로만 발송)</td><td>알림 · 명세서 메일</td></tr>
-<tr><td>(AWS 밖) GitHub Secrets · Variables</td><td>gotgan-config: 클러스터 시크릿 전부 + <code>AWS_ROLE_ARN</code> · <code>DUCKDNS_TOKEN</code> / gotgan-backend: <code>AWS_ROLE_ARN</code> · <code>SONAR_TOKEN</code> · <code>SERVERLESS_ACCESS_KEY</code> · <code>CONFIG_REPO_TOKEN</code> / Variables: 계정 ID · 리전 · 클러스터 이름 · DuckDNS 도메인</td><td><code>secrets-sync</code> → K8s Secret(<code>mysql-secret</code> · <code>{service}-secret</code> · <code>keycloak-secret</code> · <code>grafana-secret</code> · <code>alert-webhook-secret</code>)</td></tr>
+<tr><td>(AWS 밖) GitHub Secrets · Variables</td><td>gotgan-config: 클러스터 시크릿 전부 + <code>AWS_ROLE_ARN</code> / gotgan-backend: <code>AWS_ROLE_ARN</code> · <code>SONAR_TOKEN</code> · <code>SERVERLESS_ACCESS_KEY</code> · <code>CONFIG_REPO_TOKEN</code> / Variables: 계정 ID · 리전 · 클러스터 이름</td><td><code>secrets-sync</code> → K8s Secret(<code>mysql-secret</code> · <code>{service}-secret</code> · <code>keycloak-secret</code> · <code>grafana-secret</code> · <code>alert-webhook-secret</code>)</td></tr>
 <tr><td>IAM</td><td>서비스별 IRSA 역할 · GitHub Actions OIDC 역할(infra-schedule · bootstrap · backend CI) · Lambda 함수별 역할 — <code>kms:Decrypt</code> 없음</td><td>최소 권한</td></tr>
 <tr><td>SSM Parameter Store</td><td><code>/sesac-gojigi/dev/...</code> — 큐 · 테이블 · 버킷 ARN</td><td>serverless.yml이 읽음</td></tr>
-<tr><td>EIP</td><td>2개 (퍼블릭 서브넷별)</td><td>NLB 고정 IP · DuckDNS</td></tr>
+<tr><td>EIP</td><td>2개 (퍼블릭 서브넷별)</td><td>NLB 고정 IP · Route 53 A 레코드 대상</td></tr>
+<tr><td>Route 53 · ACM</td><td>도메인 <code>gotgan.click</code>(호스팅 영역) · A 레코드 <code>api.gotgan.click</code> · 인증서(DNS 검증, 자동 갱신)</td><td>API 공개 주소 · NLB 443 TLS</td></tr>
 </table></div>
 <h4>IRSA 권한</h4>
 <div class="tbl"><table>
@@ -727,7 +728,7 @@ gotgan-config/           sesac-final-1/gotgan-config — ArgoCD가 감시하는 
 ├── global/s3/main.tf            상태 버킷 (잠금은 각 backend 의 use_lockfile)
 ├── vpc/                         provider.tf · main.tf · outputs.tf
 ├── ecr/                         provider.tf · main.tf · outputs.tf   저장소 9개
-├── app/                         provider.tf · data.tf(vpc) · eip.tf · s3.tf · sns_sqs.tf · dynamodb.tf     ─ 상시
+├── app/                         provider.tf · data.tf(vpc) · eip.tf · dns.tf · s3.tf · sns_sqs.tf · dynamodb.tf     ─ 상시
 │                                ses.tf · ssm.tf · outputs.tf   (kms.tf · secrets.tf · irsa.tf 없음)
 ├── cluster/                     provider.tf · data.tf(vpc · app + Actions 역할 이름 조회) · variables.tf(team_iam_users) · main.tf   ─ 매일 07:00 apply · 21:00 destroy
 │                                irsa.tf · ebs-csi-driver.tf · lbc.tf · iam_policy.json · metrics-server.tf · outputs.tf   (irsa_grafana.tf = 박지연)
@@ -909,7 +910,7 @@ gotgan-frontend/              React · Vite · Vercel (앱이 저장소 루트)
 gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 ├── README.md · .gitignore
 ├── docs/                     adr/ · events.md · secrets.md · README.md(인수인계) · CONVENTION.md(발췌본)
-├── scripts/                  scale-nodes.sh(수동 보조) · duckdns-update.sh
+├── scripts/                  scale-nodes.sh(수동 보조) · duckdns-update.sh(삭제 예정)
 ├── infra/terraform/          global/s3 · vpc · ecr · cluster(매일 재생성 · 노드 그룹 app · db) · cicd · app
 ├── deploy/
 │   ├── k8s/                  namespace · configmap · 02-networkpolicy(DB 티어) · db · keycloak(keycloak.yaml · realm-gotgan.json)  ※ Secret YAML 없음
@@ -943,7 +944,7 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 <tr><td>config <code>docs/secrets.md</code></td><td>GitHub Secrets · Variables 이름 · 용도 · 어느 저장소 · 만드는 방법 (값 없음, 값은 노션)</td><td>시크릿 추가 시</td></tr>
 <tr><td>config <code>docs/README.md</code></td><td>인프라 산출물 · 접근 방법 · 주소 (인수인계 문서)</td><td>2주차 인수인계</td></tr>
 <tr><td>config <code>scripts/scale-nodes.sh</code></td><td>노드 그룹 desired 조절 — 수동 보조 도구 (시연 때 3대). 야간 비용 절감은 infra-schedule이 담당</td><td>시연 전</td></tr>
-<tr><td>config <code>scripts/duckdns-update.sh</code></td><td>DuckDNS 도메인 IP 갱신 (토큰은 환경 변수)</td><td>EIP 변경 시 (EIP는 상시 자원이라 평소엔 불필요)</td></tr>
+<tr><td>config <code>scripts/duckdns-update.sh</code> (삭제 예정)</td><td>DuckDNS 도메인 IP 갱신 — 10/20 Route 53 · ACM 전환으로 쓰지 않음</td><td>사용 안 함 (EIP · A 레코드는 Terraform <code>app/dns.tf</code>가 관리)</td></tr>
 </table></div>
 
 <!-- services -->
@@ -1000,7 +1001,7 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 <tr><td><code>package.json</code> · <code>package-lock.json</code></td><td>의존성 · 스크립트(<code>dev</code> · <code>build</code> · <code>lint</code>) · 버전 잠금 (lock 파일도 커밋)</td></tr>
 <tr><td><code>index.html</code></td><td>SPA 진입 HTML · 폰트 로드</td></tr>
 <tr><td><code>vite.config.js</code></td><td>React · Tailwind 플러그인 · 로컬 <code>/api</code> 프록시 → localhost:8080</td></tr>
-<tr><td><code>vercel.json</code></td><td><code>/api/*</code> → DuckDNS rewrite · 그 외 → <code>index.html</code>(새로고침 404 방지)</td></tr>
+<tr><td><code>vercel.json</code></td><td><code>/api/*</code> → <code>https://api.gotgan.click</code> rewrite · 그 외 → <code>index.html</code>(새로고침 404 방지)</td></tr>
 <tr><td><code>.env.example</code></td><td>필요한 환경 변수 이름 (<code>VITE_PORTONE_STORE_ID</code> · <code>VITE_PORTONE_CHANNEL_KEY</code> · <code>VITE_GRAFANA_URL</code>) — 실제 값은 <code>.env.local</code> · Vercel</td></tr>
 <tr><td><code>eslint.config.js</code></td><td>코드 규칙 (CI lint)</td></tr>
 <tr><td><code>public/</code></td><td>그대로 서빙되는 파일 (favicon · 목업 이미지)</td></tr>
@@ -1042,7 +1043,8 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 <tr><td><code>vpc/main.tf</code></td><td>VPC 모듈: 서브넷 4 · IGW · NAT · 라우트 · EKS 서브넷 태그</td><td>2</td></tr>
 <tr><td><code>ecr/main.tf</code></td><td>저장소 9개(gateway · user · store · product · order · payment · review · settlement · admin) · 수명주기(최근 10개)</td><td>3</td></tr>
 <tr><td><code>cicd/main.tf</code></td><td>GitHub OIDC 공급자 · Actions 역할(ECR push · serverless 배포 · cluster apply/destroy) — <b>이경석 작성 · apply</b>. cluster는 역할을 이름으로 찾으므로 상태 의존 없음</td><td>독립</td></tr>
-<tr><td><code>app/eip.tf</code></td><td>NLB용 EIP 2개 (DuckDNS가 가리킬 고정 IP)</td><td>4</td></tr>
+<tr><td><code>app/eip.tf</code></td><td>NLB용 EIP 2개 (Route 53 A 레코드가 가리킬 고정 IP)</td><td>4</td></tr>
+<tr><td><code>app/dns.tf</code></td><td>Route 53 영역 조회(data) · <code>api.gotgan.click</code> A 레코드 → EIP 2개 · ACM 인증서(DNS 검증) + 검증 레코드 · output <code>api_host</code> · <code>api_certificate_arn</code></td><td>4</td></tr>
 <tr><td><code>app/s3.tf</code></td><td>images · seller-docs · reports · log-archive 버킷 · CORS(presigned PUT) · 수명주기(log-archive 90일 → Glacier)</td><td>4</td></tr>
 <tr><td><code>app/sns_sqs.tf</code></td><td>SNS 토픽 3 · 구독자별 SQS 큐 · DLQ · 구독 필터 정책</td><td>4</td></tr>
 <tr><td><code>app/dynamodb.tf</code></td><td>notifications · settlement-reports 테이블 (On-Demand · TTL)</td><td>4</td></tr>
@@ -1426,9 +1428,9 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 <tr data-p="1"><td class="id">SYS-14</td><td><b>UI</b><span class="tag">시스템</span></td><td><ul><li>375px 가로 스크롤 없음 · 목업 디자인 원칙 유지 · 주요 버튼 키보드 접근</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">모바일 뷰 점검</td></tr>
 <tr data-p="1"><td class="id">SYS-15</td><td><b>비용</b><span class="tag">시스템</span></td><td><ul><li>클러스터 매일 07:00 생성 · 21:00 삭제(SYS-20) · 발표 후 전체 destroy</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">Project 태그 (Budgets · Cost Explorer는 연계 계정이라 불가)</td></tr>
 <tr data-p="2"><td class="id">SYS-16</td><td><b>ArgoCD 롤백 시연</b><span class="tag">시스템</span></td><td><ul><li>이전 리비전으로 롤백 → System Status에서 교체 확인</li></ul></td><td><span class="p p2">P2</span></td><td class="ref">ArgoCD History</td></tr>
-<tr data-p="2"><td class="id">SYS-17</td><td><b>게이트웨이 속도 제한 · API HTTPS</b><span class="tag">시스템</span></td><td><ul><li>경로별 요청 제한 · cert-manager로 API 인증서</li></ul></td><td><span class="p p2">P2</span></td><td class="ref">gateway · cert-manager</td></tr>
+<tr data-p="2"><td class="id">SYS-17</td><td><b>게이트웨이 속도 제한 · API HTTPS</b><span class="tag">시스템</span></td><td><ul><li>경로별 요청 제한 · API 인증서는 10/20 Route 53 · ACM(NLB 443 TLS)으로 적용 완료</li></ul></td><td><span class="p p2">P2</span></td><td class="ref">gateway · ACM</td></tr>
 <tr data-p="x"><td class="id">SYS-18</td><td><b>오토스케일링 · 파티셔닝 · CQRS/캐시 · 운영(prod) 환경</b></td><td><ul><li>범위 밖 — HPA · 이력 테이블 파티셔닝 · 읽기 모델은 가이드라인 20장 "실무에서는"</li></ul></td><td><span class="p px">제외</span></td><td class="ref">—</td></tr>
-<tr data-p="1"><td class="id">SYS-19</td><td><b>Redis 장애 시 장바구니 MySQL 폴백</b><span class="tag">시스템</span></td><td><ul><li>장바구니 원본 MySQL <code>cart_item</code> · Redis <code>cart:{userId}</code>는 캐시(write-through · read-through)</li><li>Resilience4j 서킷 <code>redisCart</code> + 폴백 → Redis 다운 시 장바구니 · 주문서 정상(지연만), 서킷 OPEN이 Grafana에 보임 · Redis AOF + PVC</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">Redis 0개 → 장바구니 정상 · 서킷 패널</td></tr><tr data-p="0"><td class="id">SYS-20</td><td><b>인프라 일일 스케줄 · 부트스트랩</b><span class="tag">시스템</span></td><td><ul><li><code>infra-schedule</code>: KST 07:00 <code>cluster/</code> apply → <code>bootstrap</code>(k8s 기본 계층 · secrets-sync · 관측성 · ArgoCD → 서비스 9개), KST 21:00 ArgoCD 앱 · LB Service · PVC 삭제 → destroy</li><li>vpc · ecr · cicd · app 상시 · EIP 고정(DuckDNS 변경 없음) · 매일 아침 빈 DB는 Flyway 시드 · Keycloak 시드 계정으로 복원 · 실패 시 <code>workflow_dispatch</code>로 수동 재실행</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">아침 자동 생성 후 System Status 전부 초록</td></tr>
+<tr data-p="1"><td class="id">SYS-19</td><td><b>Redis 장애 시 장바구니 MySQL 폴백</b><span class="tag">시스템</span></td><td><ul><li>장바구니 원본 MySQL <code>cart_item</code> · Redis <code>cart:{userId}</code>는 캐시(write-through · read-through)</li><li>Resilience4j 서킷 <code>redisCart</code> + 폴백 → Redis 다운 시 장바구니 · 주문서 정상(지연만), 서킷 OPEN이 Grafana에 보임 · Redis AOF + PVC</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">Redis 0개 → 장바구니 정상 · 서킷 패널</td></tr><tr data-p="0"><td class="id">SYS-20</td><td><b>인프라 일일 스케줄 · 부트스트랩</b><span class="tag">시스템</span></td><td><ul><li><code>infra-schedule</code>: KST 07:00 <code>cluster/</code> apply → <code>bootstrap</code>(k8s 기본 계층 · secrets-sync · 관측성 · ArgoCD → 서비스 9개), KST 21:00 ArgoCD 앱 · LB Service · PVC 삭제 → destroy</li><li>vpc · ecr · cicd · app 상시 · EIP 고정(Route 53 · ACM 변경 없음) · 매일 아침 빈 DB는 Flyway 시드 · Keycloak 시드 계정으로 복원 · 실패 시 <code>workflow_dispatch</code>로 수동 재실행</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">아침 자동 생성 후 System Status 전부 초록</td></tr>
 <tr data-p="0"><td class="id">SYS-21</td><td><b>시크릿 GitHub Secrets 동기화</b><span class="tag">시스템</span></td><td><ul><li>비밀 값은 GitHub Secrets(gotgan-config · gotgan-backend) · Vercel 환경 변수에만 — Secrets Manager · KMS · ESO 없음</li><li><code>secrets-sync</code> 워크플로가 <code>mysql-secret</code> · <code>{service}-secret</code> · <code>keycloak-secret</code> · <code>grafana-secret</code> · <code>alert-webhook-secret</code> 생성(멱등) · realm JSON · YAML은 자리표시자만 · 목록은 <code>docs/secrets.md</code></li></ul></td><td><span class="p p0">P0</span></td><td class="ref">secrets-sync 실행 후 파드 기동 · gitleaks</td></tr>
 <tr data-p="0"><td class="id">SYS-22</td><td><b>DB 티어 분리 · NetworkPolicy</b><span class="tag">시스템</span></td><td><ul><li>3티어: 프론트(Vercel) → 백(EKS <code>app</code> 노드 그룹 t3.xlarge ×2) → DB(EKS <code>db</code> 노드 그룹 t3.medium ×1, 2a, 테인트 <code>tier=db:NoSchedule</code>) — MySQL · Redis만 db 노드에</li><li><code>02-networkpolicy.yaml</code>: DB 파드 3306 · 6379는 <code>tier=backend</code> 파드만, DB 파드 egress는 DNS뿐. 사용자 → DB · Vercel → 서비스 직접 경로 없음(예외는 presigned S3 PUT)</li></ul></td><td><span class="p p0">P0</span></td><td class="ref"><code>kubectl get pod -o wide</code>(노드 배치) · 라벨 없는 파드에서 3306 접속 실패</td></tr>
 </table></div>

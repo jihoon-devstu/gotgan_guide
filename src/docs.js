@@ -87,7 +87,7 @@ export const PARTS = [
       ['spec', 'f-tf', '03-4', 'infra/terraform/ 파일 역할', '폴더별 .tf · apply 순서'],
       ['convention', 'c5', '05', '인프라 · 배포 네이밍', 'AWS · Terraform · K8s 이름 규칙'],
       ['guideline', 's4', '04', 'AWS 인프라 · EC2 사이징', '네트워크 도면 · 3티어 노드 그룹 · 비용 · 일일 스케줄'],
-      ['guideline', 's-domain', '05', 'DuckDNS · EIP', 'API 주소 고정 · 삭제 순서'],
+      ['guideline', 's-domain', '05', 'Route 53 · ACM · EIP', 'API HTTPS 주소 · 삭제 순서'],
       ['guideline', 's7', '09', 'Redis · DynamoDB', '활용처 · 테이블 설계'],
       ['guideline', 's9', '11', '서버리스 (배치 · 로깅)', '알림 메일 · 정산 명세서 · 로그 아카이브'],
     ],

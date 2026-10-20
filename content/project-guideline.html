@@ -323,7 +323,7 @@ svg .arrowhead2{fill:var(--accent)}
 </div>
 <div class="tbl"><table>
 <tr><th>단계</th><th>요청 하나가 지나가는 길 (예: 주문하기)</th></tr>
-<tr><td>1</td><td>브라우저 → Vercel(<code>https://gotgan.vercel.app/api/orders</code>) → rewrite → <code>https://api.gotgan.click</code>(Route 53 A 레코드 = NLB 고정 IP, NLB 443에서 ACM 인증서로 TLS 종료) → 게이트웨이 파드</td></tr>
+<tr><td>1</td><td>브라우저 → Vercel(<code>https://gotgan-ashy.vercel.app/api/orders</code>) → rewrite → <code>https://api.gotgan.click</code>(Route 53 A 레코드 = NLB 고정 IP, NLB 443에서 ACM 인증서로 TLS 종료) → 게이트웨이 파드</td></tr>
 <tr><td>2</td><td>게이트웨이가 Keycloak이 발급한 Access Token을 JWKS로 검증(서명 · 만료 · 역할)하고 <code>X-User-Id</code>, <code>X-User-Roles</code>, <code>X-Store-Id</code> 헤더를 붙여 order-service로 전달. 로그인 · 가입 자체는 <code>/api/auth/**</code> → user-service가 Keycloak을 대신 호출</td></tr>
 <tr><td>3</td><td>order-service가 주문을 <code>PENDING</code>으로 저장 → user-service <code>/internal/points/use</code>(포인트를 쓸 때만) → product-service <code>/internal/stock/reservations</code>(재고 예약) → payment-service <code>/internal/payments</code>(결제 준비 · <code>READY</code>) → 브라우저가 포트원 결제창으로 결제 (Saga)</td></tr>
 <tr><td>4</td><td>브라우저 → order <code>POST /api/orders/{orderNo}/payment/confirm</code> → payment-service <code>/internal/payments/verify</code>가 포트원 API로 금액 · 상태 검증 → order <code>PAID</code> 확정. 실패하면 역순 보상(포트원 취소 → 재고 해제 → 포인트 환원 → <code>FAILED</code>). 모든 동기 호출은 Resilience4j 타임아웃 · 서킷 브레이커 적용</td></tr>
@@ -839,7 +839,7 @@ data "aws_iam_roles" "github_actions" {
 <p class="lead">프론트는 Vercel, API는 Route 53에서 등록한 도메인 <code>api.gotgan.click</code>이 NLB 고정 IP(EIP)를 가리키고, NLB가 ACM 인증서로 HTTPS(443)를 받습니다. 외부에 열리는 것은 게이트웨이의 <code>/api/*</code>뿐입니다. (10/20 DuckDNS · HTTP 80에서 전환)</p>
 <div class="tbl"><table>
 <tr><th>대상</th><th>서빙</th><th>주소 예</th><th>HTTPS</th></tr>
-<tr><td>프론트 (React)</td><td><b>Vercel</b> (GitHub 연동 자동 배포)</td><td><code>https://gotgan.vercel.app</code></td><td>Vercel이 자동 제공</td></tr>
+<tr><td>프론트 (React)</td><td><b>Vercel</b> (GitHub 연동 자동 배포)</td><td><code>https://gotgan-ashy.vercel.app</code></td><td>Vercel이 자동 제공</td></tr>
 <tr><td>API (게이트웨이)</td><td><b>Route 53</b> A 레코드 → NLB의 <b>EIP 2개</b> → NLB <b>443 TLS 리스너</b> → gateway 파드 8080</td><td><code>https://api.gotgan.click</code></td><td><b>ACM 인증서</b>(무료 · 자동 갱신), NLB에서 TLS 종료</td></tr>
 <tr><td>Keycloak · Grafana · ArgoCD</td><td>공개하지 않음 (ClusterIP)</td><td><code>kubectl port-forward</code></td><td>—</td></tr>
 </table></div>
@@ -851,7 +851,7 @@ data "aws_iam_roles" "github_actions" {
 </table></div>
 
 <h3>왜 Vercel이 API까지 대신 받아 넘기나 (rewrite)</h3>
-<p>브라우저는 <code>https://gotgan.vercel.app/api/...</code>만 부르고, Vercel 서버가 이를 <code>https://api.gotgan.click</code>으로 넘기게(rewrite) 합니다. API 주소도 이제 HTTPS라 혼합 콘텐츠(Mixed Content) 문제는 없지만, 같은 출처를 유지하려고 rewrite 구조는 그대로 둡니다.</p>
+<p>브라우저는 <code>https://gotgan-ashy.vercel.app/api/...</code>만 부르고, Vercel 서버가 이를 <code>https://api.gotgan.click</code>으로 넘기게(rewrite) 합니다. API 주소도 이제 HTTPS라 혼합 콘텐츠(Mixed Content) 문제는 없지만, 같은 출처를 유지하려고 rewrite 구조는 그대로 둡니다.</p>
 <ul>
 <li>브라우저 입장에서 프론트와 API가 <b>같은 출처</b> → CORS 설정이 거의 필요 없음</li>
 <li>리프레시 토큰 쿠키(<code>Path=/api/auth</code>)가 퍼스트파티로 동작(08장)</li>
@@ -938,7 +938,7 @@ aws acm describe-certificate --certificate-arn &lt;ARN&gt; --query Certificate.S
 <h3>5단계 · 검증</h3>
 <pre><code>nslookup api.gotgan.click                               # EIP 2개가 모두 나와야 함
 curl -i https://api.gotgan.click/actuator/health        # 200 · 인증서 오류 없음
-curl -i https://gotgan.vercel.app/api/...               # Vercel rewrite 경유도 확인</code></pre>
+curl -i https://gotgan-ashy.vercel.app/api/...               # Vercel rewrite 경유도 확인</code></pre>
 
 <div class="box warn"><b class="t">이 구성의 주의 사항</b>
 <ul>
@@ -1559,7 +1559,7 @@ Resilience4j의 Spring Boot 스타터는 Boot 버전별 아티팩트(<code>resil
 <li>포트원 관리자 콘솔에 <b>팀 공용 계정</b>으로 가입(구지훈이 만들고 팀원 초대)</li>
 <li>결제 연동 → 채널 관리 → <b>테스트 채널 추가</b>(콘솔에서 고를 수 있는 테스트 PG 중 하나, 예: 카드 결제 테스트) → 채널 키 발급</li>
 <li><b>V2 API Secret</b> 발급 → 서버 전용 비밀 값</li>
-<li><b>웹훅</b> 주소 등록: <code>https://gotgan.vercel.app/api/payments/webhook</code>(05장 rewrite 경유 → 게이트웨이 → payment-service) → 웹훅 시크릿 발급</li>
+<li><b>웹훅</b> 주소 등록: <code>https://gotgan-ashy.vercel.app/api/payments/webhook</code>(05장 rewrite 경유 → 게이트웨이 → payment-service) → 웹훅 시크릿 발급</li>
 <li>구지훈이 API Secret · 웹훅 시크릿을 GitHub Secrets(<code>PORTONE_API_SECRET</code> · <code>PORTONE_WEBHOOK_SECRET</code>, gotgan-config)에 등록 → <code>secrets-sync</code>가 <code>payment-service-secret</code>으로 만들어 파드 환경 변수로 주입(12장)</li>
 <li>로컬 개발 중 웹훅을 받아 보려면 ngrok으로 임시 주소를 만들어 테스트 웹훅에 등록</li>
 </ol>
@@ -1840,7 +1840,7 @@ Cognito는 검토했으나 제외했습니다. 서버리스를 배치 · 로깅�
 <tr><td>새로고침 시</td><td colspan="2">앱 부팅 때 <code>/api/auth/refresh</code> 1회로 조용히 복구 (14장)</td></tr>
 </table></div>
 <div class="box rec"><b class="t">Vercel rewrite로 프론트와 API를 같은 출처로</b>
-05장 구성대로 브라우저는 <code>https://gotgan.vercel.app/api/*</code>만 호출하고 Vercel이 <code>https://api.gotgan.click</code>으로 넘기므로, 브라우저 입장에서 <b>같은 도메인</b>입니다. CORS 설정이 거의 필요 없고, 리프레시 토큰 쿠키(<code>Path=/api/auth</code>, httpOnly, Secure, SameSite=Strict)도 퍼스트파티로 동작합니다. Vercel ↔ API 구간도 HTTPS(ACM 인증서)입니다.</div>
+05장 구성대로 브라우저는 <code>https://gotgan-ashy.vercel.app/api/*</code>만 호출하고 Vercel이 <code>https://api.gotgan.click</code>으로 넘기므로, 브라우저 입장에서 <b>같은 도메인</b>입니다. CORS 설정이 거의 필요 없고, 리프레시 토큰 쿠키(<code>Path=/api/auth</code>, httpOnly, Secure, SameSite=Strict)도 퍼스트파티로 동작합니다. Vercel ↔ API 구간도 HTTPS(ACM 인증서)입니다.</div>
 <div class="box warn"><b class="t">Direct Grant(password grant)를 쓰는 이유와 한계</b>
 OAuth 2.1은 password grant를 <b>비권장</b>합니다. 표준은 Keycloak 로그인 화면으로 리다이렉트하는 Authorization Code + PKCE입니다. 이 프로젝트는 그래도 Direct Grant를 선택했습니다.
 <ul>
@@ -3682,7 +3682,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td><b>1주차</b><br>10/12 ~ 10/16<br><b>인프라 ①</b> AWS 기반</td><td>IAM · global/s3 · vpc · ecr(9) · app/eip · cluster(노드 그룹 2개: app t3.xlarge × 2 · db t3.medium × 1 · access entries · EBS CSI · LBC · metrics-server) · <code>02-networkpolicy.yaml</code>(DB 티어) · EIP + DuckDNS · 팀원 kubectl 접근 · GitHub Secrets · Variables 등록(3개 저장소) · <code>docs/secrets.md</code> / payment: API 계약 + DDL / 프론트: 골격(목업 이식 시작: 라우터 · 레이아웃 · axios · Query)</td><td>클러스터 없이 할 수 있는 것: 저장소 3개 생성 · 브랜치 보호 · PR 템플릿 · <b>3개 저장소 CI 골격 · 레포 간 토큰(<code>CONFIG_REPO_TOKEN</code>)</b> · cicd/(OIDC 역할) 작성 · apply · <code>AWS_ROLE_ARN</code> 등록 · Keycloak realm 설계(역할 · 매퍼 · <code>gotgan-backend</code>) · gateway 골격 · 로컬 docker-compose로 Keycloak 로그인 확인 / 구매 흐름: order · review API · 이벤트 계약 + DDL · 로컬 docker-compose로 <b>Saga 골격</b>(order → product → payment 스텁) · 서비스 템플릿 점검</td><td>관측성 매니페스트 작성(Prometheus · Loki · Grafana · Zipkin · kube-state-metrics) · <code>logback-spring.xml</code> 공통 형식 · product · store API 계약 · DDL</td></tr>
 <tr><td colspan="4"><b>1주차 완료 기준</b>: EKS가 떠 있고 팀원 전원 kubectl 가능 · ECR 9개 · EIP + DuckDNS 주소 확정(10/20 Route 53 · ACM으로 전환) · 도메인별 API · 이벤트 계약과 DDL 리뷰 완료</td></tr>
 <tr><td><b>2주차</b><br>10/19 ~ 10/23<br><b>인프라 ②</b> 인수인계 · 걷는 뼈대</td><td>app/ 자원(S3 4종 · SNS 토픽 3 · SQS + DLQ · DynamoDB 2 · SSM) · <code>cluster/irsa.tf</code>(서비스별 IRSA) · MySQL(스키마 8 · 서비스별 계정) · Redis(AOF + PVC) · <b><code>secrets-sync</code> · <code>infra-schedule</code> · <code>bootstrap</code> 워크플로</b>(07:00 up · 21:00 down 1회 검증) · <b>인프라 인수인계</b>(산출물 목록 · 접근 방법 · 주소를 문서로 공유) → 이경석 · 박지연이 그 위에 연결 / 프론트: 골격 완료 · 목업 화면 이식(라우트 · 레이아웃 · 페이지, MSW 픽스처 — API · 훅은 각 도메인 담당)</td><td>Actions 실제 job(테스트 → Sonar → ECR push → gotgan-config <code>values.yaml</code> 태그 커밋) · ArgoCD(gotgan-config 감시) · Keycloak 배포(secrets-sync Secret · realm 자리표시자 · 시드 계정 스크립트) · <b>목업 서비스 1개</b> 파이프라인 · Vercel 연결 / 구매 흐름: 로컬에서 Saga 골격 동작 확인 · 공통 템플릿(ApiResponse · 에러 핸들러 · <code>@CurrentUser</code>) 전 서비스 적용</td><td>monitoring 스택 배포 · 목업 서비스 로그/지표 확인 · <b>System Status v1</b>(Stat · State timeline)</td></tr>
-<tr><td colspan="4"><b>2주차 완료 기준 (걷는 뼈대)</b>: 목업 서비스 1개가 <code>https://gotgan.vercel.app/api/...</code>로 응답(<b>Vercel → DuckDNS → NLB → gateway → 서비스</b>, 10/20 Route 53 · ACM으로 전환) · Grafana에 로그 · 지표가 보임 · main에 push하면 자동 배포(Actions → ECR → gotgan-config 태그 커밋 → ArgoCD) · 아침 자동 생성(infra-schedule → bootstrap) 1회 성공 · 인프라 인수인계 완료</td></tr>
+<tr><td colspan="4"><b>2주차 완료 기준 (걷는 뼈대)</b>: 목업 서비스 1개가 <code>https://gotgan-ashy.vercel.app/api/...</code>로 응답(<b>Vercel → DuckDNS → NLB → gateway → 서비스</b>, 10/20 Route 53 · ACM으로 전환) · Grafana에 로그 · 지표가 보임 · main에 push하면 자동 배포(Actions → ECR → gotgan-config 태그 커밋 → ArgoCD) · 아침 자동 생성(infra-schedule → bootstrap) 1회 성공 · 인프라 인수인계 완료</td></tr>
 <tr><td><b>3주차</b><br>10/26 ~ 10/30<br><b>도메인 ①</b> 핵심 CRUD + 화면</td><td>settlement 골격 + <code>category_commission</code> · admin 골격(<code>/api/admin/**</code> → <code>/internal/**</code>, Resilience4j) · SonarQube Cloud 연동(Actions <code>sonar</code> · PR 코멘트) · SES 검증 / payment: dev 배포</td><td>user-service 가입 · 로그인 · refresh · 로그아웃(Keycloak 대리 호출) · 배송지 · gateway 인증(<code>oauth2ResourceServer</code> · 헤더 주입 · 라우트 권한) · 화면: 로그인 · 가입 · 라우트 가드 / 구매 흐름: 장바구니(MySQL <code>cart_item</code> 원본 + Redis 캐시, <code>redisCart</code> 서킷 · <b>Redis 폴백</b>) · 주문서 금액 계산(가격은 product에서 재확인) · order · review dev 배포 · 화면: 장바구니 · 주문서</td><td>product: 카테고리 · 상품 · 옵션 CRUD · 목록 · 상세 · QueryDSL 검색 · 이미지 presign / store: 입점 신청 · 서류 presign · 심사 <code>/internal</code> API · 화면: 상품 · 입점 신청</td></tr>
 <tr><td colspan="4"><b>3주차 완료 기준 (E2E #1)</b>: 9개 서비스 dev 배포 · 가입 · 로그인 → 입점 신청 → 관리자 승인(admin → store) → 상품 등록 → 구매자가 장바구니에 담기</td></tr>
 <tr><td><b>4주차</b><br>11/02 ~ 11/06<br><b>도메인 ②</b> Saga · 이벤트 · 리뷰</td><td>admin 입점 관리 · 카테고리 · 수수료 관리 API · settlement <code>OrderItemConfirmed</code> 구독 · Lambda 배포 역할 · 화면: 관리자 입점 심사 · 카테고리 / payment: 포트원 V2 검증 · 취소 · 웹훅</td><td><code>StoreApproved</code> 구독(Admin API로 SELLER · <code>store_id</code>) · 포인트 사용 차감 · 환원 <code>/internal/points/use</code>(sagaId 멱등) · <code>OrderPaid</code> 구독 5% 적립 · serverless 배포 워크플로 · 화면: 마이페이지 회원정보 · 배송지 / 구매 흐름: <b>주문 생성 Saga</b>(PENDING → 포인트 → 재고 → 결제 준비 → 포트원 결제창 → verify → PAID, 역순 보상) · 결제 대기 만료 스케줄러 · <code>OrderPaid</code> 발행 · 리뷰 CRUD(사진 · 별점 · sanitizer) · 화면: 결제 · 주문 내역 · 리뷰</td><td>재고 예약/해제 <code>/internal/stock/reservations</code> · <code>StoreApproved</code> · <code>StoreStatusChanged</code> 발행 · 스토어 홈 · 공통 로그 형식 점검 · RED 대시보드 · System Status 완성(gateway <code>up</code> · 재시작 수) · 화면: 판매자 상품 · 스토어 설정</td></tr>

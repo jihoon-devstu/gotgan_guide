@@ -2229,7 +2229,7 @@ DynamoDB는 "접근 패턴을 먼저 정하고 키를 설계"합니다(Single Ta
 <div class="tbl"><table>
 <tr><th>함수</th><th>트리거</th><th>하는 일</th><th>담당</th><th>우선순위</th></tr>
 <tr><td><code>order-notification</code></td><td>SQS (<code>notification-order-events</code> · <code>notification-store-events</code>)</td><td>SES 메일(주문 확인 · 배송 시작 · 취소/반품 완료 · 입점 승인) + DynamoDB <code>notifications</code>로 멱등 · 이력</td><td>구지훈</td><td><span class="tag should">Should</span></td></tr>
-<tr><td><code>settlement-report</code></td><td>SQS (<code>report-settlement-events</code>, SettlementPaid)</td><td>정산 명세서 CSV → S3 <code>sesac-gojigi-reports-{계정4}</code> → SES로 다운로드 링크(presigned 7일) + DynamoDB <code>settlement-reports</code></td><td>구지훈</td><td><span class="tag should">Should</span></td></tr>
+<tr><td><code>settlement-report</code></td><td>SQS (<code>report-settlement-events</code>, SettlementPaid)</td><td>정산 명세서 CSV → S3 <code>sesac-gojigi-reports-{계정4}</code> → SES 메일(판매자 정산 화면 링크, 다운로드는 화면에서 10분 presigned) + DynamoDB <code>settlement-reports</code></td><td>구지훈</td><td><span class="tag should">Should</span></td></tr>
 <tr><td><code>log-archive</code></td><td>EventBridge 매일 03:00 (KST)</td><td>CloudWatch Logs(Lambda 로그) → S3 <code>sesac-gojigi-log-archive-{계정4}</code> 내보내기, 수명주기 90일 후 Glacier</td><td>박지연</td><td><span class="tag could">Could</span></td></tr>
 </table></div>
 <p>상품 이미지 썸네일 Lambda는 만들지 않습니다. 이미지는 원본만 S3에 올리고, "원본 / 리사이즈 분리" 구조는 아키텍처 문서에만 그립니다(02장 · 20장). 고객센터(FAQ · 상품문의)도 서버리스가 아니라 프론트 정적 데이터와 review-service에 둡니다(03장).</p>
@@ -3569,7 +3569,7 @@ Terraform 변수 · 리소스에 비밀번호를 넣으면 그 값이 <b>상태 
 │   ├── src/notify.js
 │   ├── events/order-paid.json       로컬 테스트용 샘플 이벤트 (10장 봉투 형식)
 │   └── test/notify.test.js
-├── settlement-report/               구지훈 · SQS(SettlementPaid) → CSV → S3 reports → SES(7일 presigned 링크)
+├── settlement-report/               구지훈 · SQS(SettlementPaid) → CSV → S3 reports → SES(정산 화면 링크)
 │   ├── serverless.yml · package.json · src/report.js · events/settlement-paid.json
 └── log-archive/                     박지연 · EventBridge cron(매일 03:00 KST) → CloudWatch Logs 내보내기 → S3 log-archive
     ├── serverless.yml · package.json(@aws-sdk/client-cloudwatch-logs) · src/archive.js · events/schedule.json</code></pre>

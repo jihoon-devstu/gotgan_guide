@@ -1848,7 +1848,38 @@ OAuth 2.1은 password grant를 <b>비권장</b>합니다. 표준은 Keycloak 로
 <li><b>자체 로그인 · 가입 화면</b>을 목업 디자인 그대로 쓰기로 했습니다.</li>
 <li><b>토큰은 서버(user-service)만 다룹니다.</b> client secret은 서버에만 있고, Refresh Token은 httpOnly 쿠키로만 나갑니다.</li>
 </ul>
-대신 잃는 것: 소셜 로그인 · MFA · SSO 같은 Keycloak 화면 기능은 쓰지 않습니다(범위 밖). 실무에서 외부 앱이 붙는 구조라면 Authorization Code + PKCE로 바꿉니다(20장).</div>
+대신 잃는 것: 소셜 로그인 · MFA · SSO 같은 Keycloak 화면 기능은 쓰지 않습니다(범위 밖). 소셜 로그인을 넣는다면 아래 "소셜 로그인" 절처럼 <b>그 경로만</b> Authorization Code로 추가합니다. 실무에서 외부 앱이 붙는 구조라면 Authorization Code + PKCE로 바꿉니다(20장).</div>
+
+<h3>소셜 로그인 (USR-12) — 넣을 때의 설계</h3>
+<p><b>상태: 미구현 · 범위 밖</b>(스펙 USR-12 "제외"). 사전 조건이던 Keycloak HTTPS 공개 주소는 10/20 <code>api.gotgan.click</code>(Route 53 · ACM · NLB 443)으로 확보했습니다. 소셜은 <b>추가만 하는 방식</b>이라 토큰 클레임(<code>user_id</code> · <code>roles</code> · <code>store_id</code>) · 게이트웨이 · 업무 서비스 · Refresh Token 쿠키는 그대로입니다. 세부 체크리스트는 gotgan-config <code>deploy/k8s/keycloak/README.md</code> "소셜 로그인". 담당: <b>이경석</b>.</p>
+<h4>흐름 — 카카오 · 네이버 · 구글 공통</h4>
+<div class="tbl"><table>
+<tr><th>#</th><th>주체</th><th>하는 일</th></tr>
+<tr><td>1</td><td>브라우저</td><td>로그인 화면의 소셜 버튼 → user-service <code>GET /api/auth/social/{provider}</code> → <code>state</code> · PKCE 값을 만들고 Keycloak <code>/realms/gotgan/protocol/openid-connect/auth</code>로 302 (<code>kc_idp_hint={provider}</code>라 Keycloak 로그인 화면 없이 바로 제공자로)</td></tr>
+<tr><td>2</td><td>Keycloak ↔ 제공자</td><td>제공자 로그인 · 동의 → <code>/realms/gotgan/broker/{provider}/endpoint</code>로 복귀 → <b>First Broker Login</b>: 첫 로그인이면 Keycloak 계정 생성(BUYER 기본 역할), 이후엔 연결된 계정 사용</td></tr>
+<tr><td>3</td><td>Keycloak → user-service</td><td><code>GET /api/auth/social/callback?code&amp;state</code> — <code>state</code> 확인 후 <code>grant_type=authorization_code</code>(client secret · PKCE verifier)로 토큰 교환</td></tr>
+<tr><td>4</td><td>user-service</td><td>토큰에 <code>user_id</code>가 없으면(첫 로그인) <code>users</code> 행 생성(<code>User.fromSocialLogin</code>, <code>keycloak_id</code> = <code>sub</code>, <code>signup_provider</code> = 제공자) → Admin API로 속성 <code>user_id</code> 저장 → refresh grant로 <b>토큰 재발급</b>(새 토큰에 <code>user_id</code>)</td></tr>
+<tr><td>5</td><td>user-service → 브라우저</td><td>Refresh Token은 지금과 같은 쿠키로 <code>Set-Cookie</code>, 응답은 프론트 콜백 페이지로 302 (리다이렉트라 body로 Access Token을 줄 수 없음)</td></tr>
+<tr><td>6</td><td>프론트</td><td>콜백 페이지에서 <code>/api/auth/refresh</code> 1회 → Access Token 받기. 이후는 자체 로그인과 같음</td></tr>
+<tr><td>실패</td><td>user-service</td><td>제공자 취소 · <code>state</code> 불일치 · 토큰 교환 실패 → 로그인 화면으로 302 + 에러 코드 쿼리(<code>?error=AUTH_SOCIAL_FAILED</code> 등)</td></tr>
+</table></div>
+<h4>추가할 설정</h4>
+<div class="tbl"><table>
+<tr><th>영역</th><th>추가 작업</th></tr>
+<tr><td>Keycloak realm</td><td>Identity Provider 3개 — 구글은 기본 제공, 카카오는 OpenID Connect 공급자로 등록, 네이버는 OIDC를 지원하지 않아 확장(커뮤니티 제공자) 필요. 클라이언트 <code>gotgan-backend</code>에 Standard Flow 켬 + 리다이렉트 URI(<code>/api/auth/social/callback</code>) 등록</td></tr>
+<tr><td>Keycloak 주소</td><td>제공자가 브라우저를 보내는 곳이라 공개 주소 필요 → <code>KC_HOSTNAME=https://api.gotgan.click</code>. 토큰 <code>iss</code>가 바뀌므로 게이트웨이 <code>issuer-uri</code>도 함께 변경(공개키 JWKS는 내부 <code>http://keycloak:8080</code>에서)</td></tr>
+<tr><td>게이트웨이</td><td><code>/realms/**</code> → keycloak 라우트 + permitAll. 관리 콘솔 <code>/admin/**</code>은 계속 노출하지 않음</td></tr>
+<tr><td>시크릿</td><td>제공자별 client ID · secret 3쌍 — GitHub Secrets → secrets-sync → <code>keycloak-secret</code>, realm JSON에는 자리표시자만 (client secret과 같은 방식)</td></tr>
+<tr><td>프론트</td><td>소셜 버튼 3개 · 콜백 페이지(<code>/auth/callback</code>) — 로그인 이후 흐름은 그대로</td></tr>
+</table></div>
+<div class="box warn"><b class="t">넣기 전에 정할 것</b>
+<ul>
+<li><b>이메일 없는 소셜 계정</b>: 로그인 ID = 이메일이고 <code>users.email</code>은 NOT NULL입니다. 카카오는 이메일이 선택 동의라 비어 올 수 있습니다 → 이메일 동의 필수(비즈 앱 전환) · 콜백에서 추가 입력 · NOT NULL 완화 중 결정.</li>
+<li><b>같은 이메일의 자체 계정</b>: First Broker Login에서 자동 연결 · 본인 확인 후 연결 · 별도 계정 중 결정. 자동 연결은 제공자가 이메일 인증을 보장할 때만 안전합니다.</li>
+<li><b>탈퇴 회원의 재로그인</b>: 탈퇴하면 Keycloak 계정(과 소셜 연결)은 지워지고 <code>users.email</code>은 남습니다(재가입 불가). 같은 소셜 계정으로 다시 오면 Keycloak이 새 계정을 만들므로, 4단계에서 탈퇴 이메일이면 행을 만들지 말고 Keycloak 계정을 지운 뒤 거절해야 합니다.</li>
+<li><b>전화번호</b>: 소셜 가입은 <code>phone</code>이 비어 있을 수 있어 주문서에서 입력받습니다(userdb 주석과 같음).</li>
+<li>비밀번호 정책 · Brute Force는 소셜 계정에 적용되지 않습니다(제공자가 인증). <code>signup_provider</code>는 표시 · 통계용이고 인증 판단에는 쓰지 않습니다.</li>
+</ul></div>
 
 <h3>게이트웨이 설정</h3>
 <p class="cap">gateway-service application.yml — 공개 키는 JWKS로, 발급자는 고정 주소로 검증</p>

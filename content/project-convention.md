@@ -20,7 +20,7 @@
 | 항목 | 기존(따숨) | 곳간 | 이유 |
 |---|---|---|---|
 | 패키지 | 도메인형, 엔티티는 `domain/` | 도메인형, 엔티티는 **`entity/`**, 서비스 호출용 **`client/`** 추가 | 팀 합의(엔티티 패키지명) · 서비스 간 HTTP 호출 |
-| 보안 위치 | 각 앱 `common/security` | **게이트웨이에만** Spring Security, 업무 서비스는 `common/auth`(헤더 → 사용자) | 토큰 발급은 Keycloak, JWT 검증은 게이트웨이 한 곳 |
+| 보안 위치 | 각 앱 `common/security` | **게이트웨이에만** Spring Security, 업무 서비스는 공통 모듈 `libs/common-web`의 `auth`(헤더 → 사용자) | 토큰 발급은 Keycloak, JWT 검증은 게이트웨이 한 곳 |
 | 로그인 사용자 | `SecurityUtil.getMemberId()` | `@CurrentUser AuthUser` (게이트웨이가 넣은 `X-User-*` 헤더) | 업무 서비스에 SecurityContext 없음 |
 | FK 제약 | 참조 컬럼 FK 필수 | **같은 서비스 안에서만 FK 필수**, 다른 서비스 ID는 논리 참조 + 인덱스 | DB per Service |
 | 회원 테이블 · 패키지 | `member` · `member/` | **`users` · `user/`** | 서비스(user-service) · 스키마(userdb) 이름과 일치 |
@@ -123,11 +123,8 @@
 ```
 com.sesac.gojigi.{service}            # service = gateway · user · store · product · order · payment · review · settlement · admin
 ├── {Service}Application.java
-├── common                           # 도메인에 속하지 않는 공통 모듈 (서비스 템플릿에서 복사)
+├── common                           # 이 서비스 안에서만 쓰는 공통 (응답 봉투 · 예외 · 인증은 libs/common-web — 아래)
 │   ├── config                       # @Configuration — Redis · RestClient · Resilience4j · QueryDSL · Scheduling(ShedLock) · WebMvc · Swagger · AWS
-│   ├── dto                          # ApiResponse · PageResponse
-│   ├── exception                    # ErrorCode · CommonErrorCode · BusinessException · GlobalExceptionHandler
-│   ├── auth                         # @CurrentUser · AuthUser · CurrentUserArgumentResolver
 │   ├── event                        # EventEnvelope · SnsEventPublisher · ProcessedEvent (이벤트를 쓰는 서비스만)
 │   ├── entity                       # BaseTimeEntity
 │   └── util                         # 두 도메인 이상이 쓰는 유틸
@@ -145,6 +142,8 @@ com.sesac.gojigi.{service}            # service = gateway · user · store · pr
 ```
 
 - 해당 도메인에 필요 없는 패키지는 만들지 않음 (예: `cart`는 `entity` 없음)
+- **공통 모듈 `libs/common-web`**(Gradle composite build) — 응답 봉투(`ApiResponse` · `PageResponse`) · 예외(`ErrorCode` · `CommonErrorCode` · `BusinessException` · `GlobalExceptionHandler`, 404 · 405 포함) · `@CurrentUser` · `AuthUser` · 로그 MDC `userId` 필터 · `/actuator` 트레이스 제외. 서비스마다 복사하지 않고 `com.sesac.gojigi.common.web.*`를 import. 서블릿 전용이라 gateway 제외, 9개 중 7개 적용(admin은 아직 미이관)
+- 도메인 에러 코드는 각 서비스 `{domain}/exception/{Domain}ErrorCode implements ErrorCode`
 - **DB가 없는 서비스 두 곳**
   - gateway-service: `config` · `filter` · `exception`만
   - admin-service: 도메인 패키지에 `controller` · `service` · `client` · `dto`만 — **`entity` · `repository` 없음**, 데이터는 각 서비스 `/internal/**` 호출로만 다룸
@@ -366,7 +365,7 @@ public ResponseEntity<ApiResponse<Void>> ship(@CurrentUser AuthUser user,
 
 ```
 RuntimeException
-└── BusinessException (common.exception)          ← 모든 비즈니스 예외의 부모
+└── BusinessException (common.web.exception)      ← 모든 비즈니스 예외의 부모
     ├── AuthException    + AuthErrorCode
     ├── OrderException   + OrderErrorCode
     └── {Domain}Exception + {Domain}ErrorCode      ← 새 도메인은 이 패턴
@@ -394,7 +393,7 @@ RuntimeException
 | `REVIEW` · `INQUIRY` | review | `REVIEW_NOT_ELIGIBLE` 작성 자격 없음 · `INQUIRY_NOT_FOUND` |
 | `SETTLE` · `COMMISSION` | settlement | `SETTLE_ALREADY_AGGREGATED` 이미 집계된 주차 · `COMMISSION_RATE_INVALID` |
 | (없음 — 그대로 전달) | admin | 하위 서비스가 보낸 `ApiResponse`의 `code` · `message`를 **바꾸지 않고 전달**, 연결 실패 · 타임아웃만 `EXTERNAL_API_ERROR` |
-| 공통 (도메인 접두어 없음) | 전체 | `SUCCESS` · `INVALID_INPUT` · `UNAUTHORIZED` · `FORBIDDEN` · `NOT_FOUND` · `EXTERNAL_API_ERROR` · `GLOBAL_ERROR` |
+| 공통 (도메인 접두어 없음) | 전체 | `SUCCESS` · `INVALID_INPUT` · `UNAUTHORIZED` · `FORBIDDEN` · `NOT_FOUND` · `METHOD_NOT_ALLOWED` · `EXTERNAL_API_ERROR` · `GLOBAL_ERROR` |
 
 - admin-service는 자체 도메인 에러 코드를 만들지 않습니다. 관리자 화면이 받는 코드는 데이터 주인 서비스의 코드 그대로 (`APPLY_REAPPLY_RESTRICTED` 등)
 
@@ -524,15 +523,16 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
   - `warn` — 처리는 됐지만 주의 (재고 부족, 금액 불일치 감지, 재시도)
   - `info` — 상태 변화 (주문 PAID, Saga 보상 완료, 정산 집계 완료)
   - `debug` — 개발 확인용 (운영 미출력)
-- 로그 메시지에 업무 키 포함: `orderNo` · `sagaId` · `paymentId` (MDC 또는 메시지)
+- 로그 메시지에 업무 키 포함: `orderNo` · `sagaId`는 MDC(order · payment), 그 외(`paymentId` 등)는 메시지
+- 예외 로그는 `GlobalExceptionHandler` 한 곳에서 남김
 - **비밀번호 · 토큰 · 포트원 키 · 카드 정보 · 이메일 · 전화 · 주소는 info 이상에 남기지 않음**
-- 형식은 JSON (공통 `logback-spring.xml`), traceId 자동 포함 — 형식 임의 변경 금지
+- 형식은 공통 `logback-spring.xml` — 콘솔 `[traceId,spanId,userId]`, k8s는 Loki 전송(본문 JSON · 라벨 `app` · `namespace` · `level` · 배치 10초). 형식 임의 변경 금지
 
 ### 2-9. API 문서 (Swagger)
 
 - springdoc 애노테이션: 클래스 `@Tag`, 메서드 `@Operation` + `@ApiResponses` + `@Parameter`
 - description에 **인가 요건**(공개 / BUYER / SELLER / ADMIN / 내부)과 **비즈니스 에러 코드** 기재
-- 공통 `common.dto.ApiResponse`와 Swagger `ApiResponse`가 동명 — Swagger 쪽은 import하지 않고 **FQN**(`@io.swagger.v3.oas.annotations.responses.ApiResponse`)
+- 공통 `common.web.dto.ApiResponse`와 Swagger `ApiResponse`가 동명 — Swagger 쪽은 import하지 않고 **FQN**(`@io.swagger.v3.oas.annotations.responses.ApiResponse`)
 - 접속: 각 서비스 `http://localhost:{port}/swagger-ui.html` · 명세 파일은 `docs/api/{service}.yaml`로 내보내 PR에 포함
 
 ### 2-10. 테스트
@@ -567,7 +567,7 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 
 | 스키마 | 테이블 |
 |---|---|
-| userdb | `users`(`point_balance` · `grade` 포함) · `address` · `point_history` |
+| userdb | `users`(`point_balance` · `grade` 포함) · `address` · `point_history` · `point_use_saga` · `shedlock` |
 | storedb | `store_application` · `application_document` · `application_history` · `store` · `store_status_history` · `shedlock` |
 | productdb | `category` · `product` · `product_option` · `product_image` · `stock_history` · `processed_event` |
 | orderdb | `cart_item`(장바구니 원본 — Redis `cart:{userId}`는 캐시) · `orders` · `order_item` · `order_store_shipment` · `order_item_history` · `order_claim` · `saga_instance` · `outbox_event` · `shedlock` |
@@ -771,7 +771,7 @@ gotgan-frontend/src/
 ├── shared/                       # 도메인에 속하지 않는 공통
 │   ├── api/                      #   axiosInstance.js · queryKeys.js · refresh.js(single-flight)
 │   ├── components/ui/            #   목업 공통 컴포넌트 (Pill · Price · Modal · Kpi · BarChart …)
-│   ├── components/common/        #   RequireRole · ConfirmModal · EmptyState · SortableHeader
+│   ├── components/common/        #   PostcodeSearch(우편번호 검색) · ConfirmModal · EmptyState · SortableHeader
 │   ├── layouts/                  #   ShopLayout · MyPageLayout · ConsoleLayout
 │   ├── hooks/  stores/  utils/
 ├── mocks/                        # MSW handlers · fixtures
@@ -913,12 +913,14 @@ export function useShipOrderItemsMutation() {
 
 - 예외: 성공 후 화면을 떠나는 인증 액션(로그인 · 로그아웃 · 비밀번호 변경)과 **포트원 결제 흐름**(`requestPayment` → 결제 검증)은 API 함수 직접 호출 허용. 끝난 뒤 필요한 queryKey만 무효화
 - 에러 메시지는 `error.response.data.message`(ApiResponse) 사용, 코드별 분기는 `code`로
+- 목업 데이터를 API로 교체할 때 필드명은 API 이름으로 맞춤 (목업 이름 유지 안 함)
 
 ### 4-7. TanStack Table 규칙
 
 - **데모 규모(수백 건 이하) 목록은 전체 1회 로드 + 클라이언트에서 검색 · 정렬 · 페이징** (관리자 입점 심사 · 스토어 · 회원 · 정산, 판매자 상품)
 - 건수가 계속 늘어나는 목록(판매자 주문, 구매자 상품 목록)은 **서버 페이징**(`manualPagination` · `manualSorting`)
 - 정렬 헤더는 `shared/components/common/SortableHeader.jsx` 재사용
+- `useClientTable`은 빈 목록에 모듈 상수 `EMPTY`를 넘김 — 매번 새 `[]`를 만들지 않음 (아래 참조 안정성 규칙)
 - **`state`에 넘기는 배열 · 객체는 `useMemo`, 함수는 컴포넌트 바깥(모듈 스코프) 또는 `useCallback`** — 매 렌더링 새 참조를 넘기면 무한 루프로 브라우저가 멈춤
 
 ```jsx
@@ -966,6 +968,7 @@ function AdminStoreListPage() {
 - 이름: `sesac-gojigi-{용도}` (kebab-case) — `sesac-gojigi-eks-cluster` · `sesac-gojigi-order-events`
 - 모든 자원 태그: `Project=sesac-gojigi` · `ManagedBy=terraform` (콘솔에서 만든 자원은 `ManagedBy=manual` + 이슈 기록)
 - 계정 ID · 리전 하드코딩 금지 — `data.aws_caller_identity` · 변수 사용
+- AWS SDK를 쓰는 서비스는 `software.amazon.awssdk:sts` 의존성 필수(IRSA). S3 `HeadObject`로 존재 확인하면 버킷에 `s3:ListBucket` 권한 필요
 
 | 자원 | 규칙 | 예 |
 |---|---|---|
@@ -983,7 +986,7 @@ function AdminStoreListPage() {
 - 자원 로컬 이름: snake_case, 타입 반복 금지 (`aws_s3_bucket.product_images` ○ / `aws_s3_bucket.product_images_bucket` ✗)
 - 변수 · output: snake_case + `description` 필수
 - 커밋 전 `terraform fmt -recursive` · `terraform validate`
-- apply/destroy는 스케줄 워크플로(`infra-schedule`, OIDC 역할 — `cluster/` 매일 07:00 · 21:00) 또는 구지훈. 다른 사람은 plan까지(`infra.yml`이 PR에 plan 코멘트). 예외: `cicd/`(GitHub OIDC · Actions 역할)는 이경석이 작성 · 로컬 apply — 워크플로가 쓸 역할을 만드는 폴더라 워크플로로 apply할 수 없음
+- apply/destroy는 스케줄 워크플로(`infra-schedule`, OIDC 역할 — `cluster/` 매일 07:00 생성 · 21:00 삭제, GitHub 스케줄은 지연될 수 있고 데이터는 매일 초기화) 또는 구지훈. 다른 사람은 plan까지(`infra.yml`이 PR에 plan 코멘트). 예외: `cicd/`(GitHub OIDC · Actions 역할)는 이경석이 작성 · 로컬 apply — 워크플로가 쓸 역할을 만드는 폴더라 워크플로로 apply할 수 없음
 - Terraform에 비밀 값 금지 — 시크릿은 GitHub Secrets → `secrets-sync`(1-5). `kms.tf` · `secrets.tf` · `eso.tf` 없음
 - `.terraform.lock.hcl` 커밋, `*.tfstate` · `.terraform/` 커밋 금지
 - 버전: Terraform **1.16.5** 고정(`required_version = "~> 1.16.0"`, 워크플로 `terraform_version: '1.16.5'`) · aws provider `~> 5.0` · 모듈 vpc `~> 5` / eks `~> 20`. 상태 잠금은 `backend "s3" { use_lockfile = true }`(1.10+, DynamoDB 잠금 테이블 없음)

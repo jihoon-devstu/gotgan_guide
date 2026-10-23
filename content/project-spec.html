@@ -845,7 +845,7 @@ gotgan-config/deploy/
 <tr><td>State timeline (최근 30분)</td><td><code>up</code> · 파드 Ready — 죽었다 살아나는 구간이 시간축에 빨강 → 초록으로</td><td>Prometheus <code>up</code> · kube-state-metrics</td></tr>
 <tr><td>롤링 배포</td><td>ReplicaSet 교체 · 배포 중 5xx 비율 0 확인</td><td>kube-state-metrics · Micrometer</td></tr>
 <tr><td>파드 재시작 · 서킷 상태</td><td>재시작 수 · 서킷 브레이커 OPEN 여부</td><td>kube-state-metrics · Resilience4j 지표</td></tr>
-<tr><td>입구 생존</td><td>gateway 파드 2개의 <code>up</code> → 1 초록 · 0 빨강 (blackbox exporter 없음 — 10/13 3차)</td><td>Prometheus <code>up</code></td></tr>
+<tr><td>입구 생존</td><td>살아 있는 gateway 파드 수(<code>up</code>) → 2 초록 · 1 노랑 · 0 빨강 (blackbox exporter 없음 — 10/13 3차)</td><td>Prometheus <code>up</code></td></tr>
 </table></div>
 <ul class="b">
   <li>시연 때 kiosk 모드로 한 화면에 띄움 · 관리자 화면에는 링크만 (별도 "시스템 상태" 페이지 없음) · 담당 박지연</li>
@@ -1609,7 +1609,7 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 <tr><th>#</th><th>시나리오</th><th>보여줄 결과 (System Status · 화면)</th><th>관련 ID</th></tr>
 <tr><td>①</td><td>정상 전체 흐름 (위 E2E 요약)</td><td>모든 서비스 초록 · traceId 한 줄로 전 구간</td><td class="ref">SYS-01 · SYS-10</td></tr>
 <tr><td>②</td><td><b>서비스 하나 다운</b> — order 레플리카 0</td><td>order 칸 빨강 · 상품 조회 · 리뷰 · 정산 화면 정상 · 판매자/관리자 대시보드는 주문 카드만 "일시적으로 불러올 수 없음" · 주문 시도는 에러 메시지</td><td class="ref">SYS-02 · STR-07 · ADM-02~03</td></tr>
-<tr><td>③</td><td>파드 강제 삭제 → 자동 복구</td><td>State timeline에 빨강 → 초록 복귀 구간 · gateway 2개라 요청은 계속 처리</td><td class="ref">SYS-04</td></tr>
+<tr><td>③</td><td>파드 강제 삭제 → 자동 복구</td><td>가용 타일 노랑 → 초록 · 파드 Ready 타임라인에 새 파드 · gateway 2개라 요청은 계속 처리 (gateway 하나 삭제 시 입구 생존 1/2 노랑)</td><td class="ref">SYS-04</td></tr>
 <tr><td>④</td><td><b>무중단 배포</b> — 부하를 건 상태로 새 이미지 롤링 배포</td><td>롤링 패널에서 ReplicaSet 교체 · 배포 중 5xx 0</td><td class="ref">SYS-03</td></tr>
 <tr><td>⑤</td><td>(가능하면) ArgoCD 롤백</td><td>이전 리비전으로 교체 · 초록 유지</td><td class="ref">SYS-16</td></tr>
 <tr><td>⑥</td><td>Saga 보상 — 재고 부족 · 금액 위변조</td><td>주문 FAILED · 포트원 자동 취소 · 재고 · 포인트 원복 · Saga 보상 지표 증가</td><td class="ref">ORD-04 · PAY-02 · SYS-06</td></tr>

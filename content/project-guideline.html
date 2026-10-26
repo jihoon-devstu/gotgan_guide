@@ -1372,16 +1372,16 @@ public class StockReservationService {
 
 <h4>③ 서비스 간 호출 클라이언트 (타임아웃 필수)</h4>
 <pre><code>// order-service order/client/ProductClient.java — 받는 쪽은 product-service InternalStockController
-@HttpExchange("/internal/stock")
+@HttpExchange("/internal")
 public interface ProductClient {
-    @PostExchange("/reservations")
-    void reserve(@RequestBody ReserveStockRequest request);
+    @PostExchange("/stock/reservations")
+    ApiResponse&lt;StockReservationResponse&gt; reserve(@RequestBody StockReserveRequest request);
 
-    @DeleteExchange("/reservations/{sagaId}")
-    void release(@PathVariable String sagaId);
+    @PostExchange("/stock/reservations/{sagaId}/release")   // 예약이 없어도 해제 표식만 남기고 200
+    ApiResponse&lt;StockReservationResponse&gt; release(@PathVariable String sagaId, @RequestBody StockReleaseRequest request);
 
-    @GetExchange("/options")
-    List&lt;StockResponse&gt; getStocks(@RequestParam List&lt;Long&gt; productOptionIds);   // 멱등 GET → 재시도 대상
+    @GetExchange("/product-options")
+    ApiResponse&lt;List&lt;ProductOptionResponse&gt;&gt; getOptions(@RequestParam List&lt;Long&gt; ids);   // 멱등 GET → 재시도 대상
 }
 
 // common/config/RestClientConfig.java — 연결 2초 · 읽기 3초 (컨벤션 2-7, 값 임의 변경 금지)

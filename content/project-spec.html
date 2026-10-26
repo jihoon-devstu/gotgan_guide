@@ -580,7 +580,7 @@ gotgan-frontend/         sesac-final-1/gotgan-frontend — React 앱이 루트 �
 gotgan-config/           sesac-final-1/gotgan-config — ArgoCD가 감시하는 쪽 (배포 · 인프라)
 ├── deploy/              k8s 기본 계층(keycloak 포함) · helm 앱 계층 · argocd        (2-4)
 │   └── observability/   Prometheus · Loki · Zipkin · Grafana · System Status     (2-5)
-├── infra/terraform/     AWS 자원 (cluster/ 는 매일 07:00 apply · 21:00 destroy)    (2-3)
+├── infra/terraform/     AWS 자원 (cluster/ 는 매일 08:00 apply · 22:00 destroy)    (2-3)
 ├── scripts/             scale-nodes.sh(수동 보조) · duckdns-update.sh(삭제 예정)
 ├── docs/                adr/ · events.md · secrets.md · README.md · CONVENTION.md(발췌본)
 ├── .github/             workflows(infra · infra-schedule · bootstrap · secrets-sync · security)   (2-4)
@@ -680,9 +680,9 @@ gotgan-config/           sesac-final-1/gotgan-config — ArgoCD가 감시하는 
 <tr><td>로드 밸런서</td><td>gateway Service → LBC → NLB(internet-facing · ip 타깃 · 교차 영역) + <b>EIP 2개 고정</b></td></tr>
 <tr><td>도메인</td><td>API: <code>api.gotgan.click</code>(Route 53 등록 도메인 <code>gotgan.click</code>, A 레코드 → EIP 2개) · ACM 인증서(NLB 443 TLS 종료) · 프론트: Vercel 기본 도메인(<code>https://gotgan-ashy.vercel.app</code>)</td></tr>
 <tr><td>이름 규칙</td><td><code>sesac-gojigi-*</code> · 태그 <code>Project=sesac-gojigi</code> 모든 자원</td></tr>
-<tr><td>일일 스케줄</td><td><code>infra-schedule</code> 워크플로(gotgan-config): KST 07:00 <code>cluster/</code> apply → <code>bootstrap</code>(k8s 기본 계층 · secrets-sync · 관측성 · ArgoCD), KST 21:00 ArgoCD 앱 · LB Service · PVC 삭제 → <code>cluster/</code> destroy. vpc · ecr · cicd · app은 상시. 매일 아침 빈 DB → Flyway 시드로 복원</td></tr>
+<tr><td>일일 스케줄</td><td><code>infra-schedule</code> 워크플로(gotgan-config): KST 08:00 <code>cluster/</code> apply → <code>bootstrap</code>(k8s 기본 계층 · secrets-sync · 관측성 · ArgoCD), KST 22:00 ArgoCD 앱 · LB Service · PVC 삭제 → <code>cluster/</code> destroy. vpc · ecr · cicd · app은 상시. 매일 아침 빈 DB → Flyway 시드로 복원</td></tr>
 <tr><td>시크릿</td><td><b>GitHub Secrets 단일 소스</b> → <code>secrets-sync</code> 워크플로가 K8s Secret 생성. Secrets Manager · KMS · ESO 없음. 비밀 아닌 값은 GitHub Variables(<code>AWS_ACCOUNT_ID</code> · <code>AWS_REGION</code> · <code>EKS_CLUSTER_NAME</code>), 목록은 <code>docs/secrets.md</code></td></tr>
-<tr><td>비용 가드</td><td>클러스터 매일 07:00 생성 · 21:00 삭제 · 발표 후 전체 destroy · Budgets · Cost Explorer는 연계 계정이라 사용 불가(관리 계정 소관)</td></tr>
+<tr><td>비용 가드</td><td>클러스터 매일 08:00 생성 · 22:00 삭제 · 발표 후 전체 destroy · Budgets · Cost Explorer는 연계 계정이라 사용 불가(관리 계정 소관)</td></tr>
 </table></div>
 <h4>자원 목록</h4>
 <div class="tbl"><table>
@@ -730,7 +730,7 @@ gotgan-config/           sesac-final-1/gotgan-config — ArgoCD가 감시하는 
 ├── ecr/                         provider.tf · main.tf · outputs.tf   저장소 9개
 ├── app/                         provider.tf · data.tf(vpc) · eip.tf · dns.tf · s3.tf · sns_sqs.tf · dynamodb.tf     ─ 상시
 │                                ses.tf · ssm.tf · outputs.tf   (kms.tf · secrets.tf · irsa.tf 없음)
-├── cluster/                     provider.tf · data.tf(vpc · app + Actions 역할 이름 조회) · variables.tf(team_iam_users) · main.tf   ─ 매일 07:00 apply · 21:00 destroy
+├── cluster/                     provider.tf · data.tf(vpc · app + Actions 역할 이름 조회) · variables.tf(team_iam_users) · main.tf   ─ 매일 08:00 apply · 22:00 destroy
 │                                irsa.tf · ebs-csi-driver.tf · lbc.tf · iam_policy.json · metrics-server.tf · outputs.tf   (irsa_grafana.tf = 박지연)
 └── cicd/                        provider.tf · variables.tf · main.tf · outputs.tf   GitHub OIDC 역할 (이경석 · 순서 무관)   ─ 상시
 
@@ -738,7 +738,7 @@ serverless/
 ├── order-notification/          serverless.yml · package.json · src/notify.js · events/*.json · test/
 ├── settlement-report/           serverless.yml · package.json · src/report.js · events/ · test/
 └── log-archive/                 serverless.yml(schedule 이벤트) · package.json · src/archive.js · events/</code></pre>
-<div class="note"><b>삭제 순서</b>매일 21:00 <code>infra-schedule</code> down: ArgoCD 앱 · gateway Service(NLB) · PVC 먼저 → <code>cluster/</code> destroy. 발표 후 전체 삭제: down 실행 후 <code>app/</code> → <code>cicd/</code> → <code>ecr/</code> · <code>vpc/</code>. NLB가 EIP를 잡고 있으면 <code>app/</code> destroy 실패.</div>
+<div class="note"><b>삭제 순서</b>매일 22:00 <code>infra-schedule</code> down: ArgoCD 앱 · gateway Service(NLB) · PVC 먼저 → <code>cluster/</code> destroy. 발표 후 전체 삭제: down 실행 후 <code>app/</code> → <code>cicd/</code> → <code>ecr/</code> · <code>vpc/</code>. NLB가 EIP를 잡고 있으면 <code>app/</code> destroy 실패.</div>
 
 <!-- ---------------- 2-4 CI/CD ---------------- -->
 <h3 id="p-cicd"><span class="n">2-4</span>CI/CD · 코드 품질</h3>
@@ -750,7 +750,7 @@ serverless/
 <tr><td>정적 분석</td><td><b>SonarQube Cloud 무료 플랜</b> — Actions에서 Gradle <code>sonar</code>, main 대상 PR에 품질 게이트 · 이슈 코멘트. 비공개 저장소 5만 줄 한도 → 넘으면 중단. 클러스터 · EC2 자원 없음</td></tr>
 <tr><td>CD</td><td>ArgoCD (Pull 방식 GitOps · auto-sync · prune · selfHeal) — <b>gotgan-config</b>의 <code>deploy/helm/sesac-gojigi-app</code> 감시. ArgoCD 자체는 매일 아침 bootstrap이 설치</td></tr>
 <tr><td>시크릿</td><td>GitHub Secrets 단일 소스 → <code>secrets-sync</code> 워크플로가 <code>kubectl create secret generic</code>(mysql · {service} · keycloak · grafana · alert-webhook). realm JSON은 <code>${GOTGAN_BACKEND_CLIENT_SECRET}</code> 자리표시자</td></tr>
-<tr><td>인프라 스케줄</td><td><code>infra-schedule</code>(cron <code>0 22 * * *</code> UTC = KST 07:00 up · <code>0 12 * * *</code> = KST 21:00 down) + <code>bootstrap</code>(kubeconfig → k8s 기본 계층 → secrets-sync → 관측성 → ArgoCD). 노드 0 스케일(nightly-scale) 폐기</td></tr>
+<tr><td>인프라 스케줄</td><td><code>infra-schedule</code>(KST 08:00 up · 22:00 down — EventBridge Scheduler → Lambda → workflow_dispatch) + <code>bootstrap</code>(kubeconfig → k8s 기본 계층 → secrets-sync → 관측성 → ArgoCD). 노드 0 스케일(nightly-scale) 폐기</td></tr>
 <tr><td>패키징</td><td>Docker 멀티 스테이지 · Helm 차트 1개(서비스 9개를 values로)</td></tr>
 <tr><td>무중단 배포</td><td>Deployment 롤링 업데이트 <code>maxUnavailable: 0</code> · <code>maxSurge: 1</code> · readiness probe 통과 후 트래픽 · <code>server.shutdown=graceful</code> + preStop 대기</td></tr>
 <tr><td>레지스트리</td><td>ECR · 태그 = 커밋 SHA 7자리</td></tr>
@@ -766,7 +766,7 @@ serverless/
 <tr><td rowspan="2">gotgan-frontend</td><td><code>frontend.yml</code></td><td>PR</td><td>lint · build 검사 (배포는 Vercel)</td></tr>
 <tr><td><code>security.yml</code></td><td>PR</td><td>gitleaks</td></tr>
 <tr><td rowspan="5">gotgan-config</td><td><code>infra.yml</code></td><td>PR · <code>infra/terraform/**</code></td><td><code>fmt -check</code> · <code>validate</code> · <code>plan</code> 코멘트 (apply 없음)</td></tr>
-<tr><td><code>infra-schedule.yml</code></td><td>schedule 07:00 · 21:00 KST · <code>workflow_dispatch</code>(up/down)</td><td>up: <code>terraform apply cluster/</code> → bootstrap 호출 / down: ArgoCD 앱 · LB Service · PVC 삭제 → <code>terraform destroy cluster/</code></td></tr>
+<tr><td><code>infra-schedule.yml</code></td><td>08:00 · 22:00 KST — EventBridge Scheduler → Lambda → <code>workflow_dispatch</code>(up/down, 수동도 같음)</td><td>up: <code>terraform apply cluster/</code> → bootstrap 호출 / down: ArgoCD 앱 · LB Service · PVC 삭제 → <code>terraform destroy cluster/</code></td></tr>
 <tr><td><code>bootstrap.yml</code></td><td><code>workflow_call</code> · <code>workflow_dispatch</code></td><td>kubeconfig → <code>deploy/k8s/</code>(namespace · configmap · db · keycloak) → secrets-sync → <code>deploy/observability/</code> → ArgoCD 설치 + Application → 서비스 9개 배포</td></tr>
 <tr><td><code>secrets-sync.yml</code></td><td><code>workflow_call</code> · <code>workflow_dispatch</code></td><td>GitHub Secrets → <code>kubectl create secret generic ... --dry-run=client -o yaml | kubectl apply</code>(멱등)</td></tr>
 <tr><td><code>security.yml</code></td><td>PR</td><td>gitleaks</td></tr>
@@ -923,7 +923,7 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 <tr><th>저장소 · 폴더</th><th>결과물</th><th>실행 주체</th><th>스펙</th></tr>
 <tr><td>backend <code>services/</code></td><td>컨테이너 이미지 9개</td><td>GitHub Actions → ECR → gotgan-config 태그 커밋</td><td>2-1</td></tr>
 <tr><td>frontend (루트)</td><td>정적 웹사이트</td><td>Vercel</td><td>2-2</td></tr>
-<tr><td>config <code>infra/terraform/</code></td><td>AWS 자원</td><td><code>cluster/</code>는 infra-schedule 워크플로(매일 07:00 · 21:00), 나머지는 구지훈 (terraform apply)</td><td>2-3</td></tr>
+<tr><td>config <code>infra/terraform/</code></td><td>AWS 자원</td><td><code>cluster/</code>는 infra-schedule 워크플로(매일 08:00 · 22:00), 나머지는 구지훈 (terraform apply)</td><td>2-3</td></tr>
 <tr><td>backend <code>serverless/</code></td><td>Lambda 3개</td><td>GitHub Actions (serverless deploy)</td><td>2-3</td></tr>
 <tr><td>config <code>deploy/k8s/</code>(keycloak 포함) · <code>observability/</code> · K8s Secret</td><td>클러스터 기본 계층 · 시크릿 · Keycloak · 모니터링</td><td>bootstrap · secrets-sync 워크플로 (kubectl, 매일 아침)</td><td>2-4 · 2-5</td></tr>
 <tr><td>config <code>deploy/helm/</code> · <code>argocd/</code></td><td>앱 Deployment · Service</td><td>ArgoCD</td><td>2-4</td></tr>
@@ -1051,7 +1051,7 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 <tr><td><code>app/dynamodb.tf</code></td><td>notifications · settlement-reports 테이블 (On-Demand · TTL)</td><td>4</td></tr>
 <tr><td><code>app/ses.tf</code></td><td>발신 · 수신 이메일 자격 증명 (샌드박스 검증)</td><td>4</td></tr>
 <tr><td><code>app/ssm.tf</code></td><td>큐 · 테이블 · 버킷 ARN을 SSM 파라미터로 기록 (serverless.yml이 읽음)</td><td>4</td></tr>
-<tr><td><code>cluster/main.tf</code></td><td>EKS 모듈: 제어 평면 · 노드 그룹 2개(<code>app</code> t3.xlarge ×2 라벨 <code>tier=app</code> / <code>db</code> t3.medium ×1 2a 고정 · 라벨 + 테인트 <code>tier=db:NoSchedule</code>) · access entries(팀원 전원 + Actions 역할, <code>enable_cluster_creator_admin_permissions = false</code>) · OIDC 공급자 — <b>cluster/ 전체가 매일 07:00 apply · 21:00 destroy</b>(infra-schedule)</td><td>5</td></tr>
+<tr><td><code>cluster/main.tf</code></td><td>EKS 모듈: 제어 평면 · 노드 그룹 2개(<code>app</code> t3.xlarge ×2 라벨 <code>tier=app</code> / <code>db</code> t3.medium ×1 2a 고정 · 라벨 + 테인트 <code>tier=db:NoSchedule</code>) · access entries(팀원 전원 + Actions 역할, <code>enable_cluster_creator_admin_permissions = false</code>) · OIDC 공급자 — <b>cluster/ 전체가 매일 08:00 apply · 22:00 destroy</b>(infra-schedule)</td><td>5</td></tr>
 <tr><td><code>cluster/irsa.tf</code></td><td>서비스별 IAM 역할 + 정책 (ServiceAccount와 연결) — 신뢰 정책이 그날의 OIDC 공급자를 가리키므로 클러스터와 함께 매일 재생성, 이름 고정 → ARN 불변. 권한 대상 ARN은 app/ remote state</td><td>5</td></tr>
 <tr><td><code>cluster/ebs-csi-driver.tf</code></td><td>EBS CSI 애드온 + IRSA 역할 (MySQL · Prometheus 볼륨)</td><td>5</td></tr>
 <tr><td><code>cluster/lbc.tf</code> · <code>iam_policy.json</code></td><td>Load Balancer Controller Helm 설치 + IRSA · 공식 권한 정책 파일</td><td>5</td></tr>
@@ -1077,7 +1077,7 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 <tr><td><code>observability/prometheus.yaml</code></td><td>수집 설정(파드 어노테이션 발견 · 15초) · RBAC · StatefulSet + PVC 10Gi(보존 7일 · 상한 8GB). EBS 는 한 노드에만 붙어 옛 파드가 먼저 내려가야 하므로 StatefulSet</td><td>kubectl</td></tr>
 <tr><td><code>observability/kube-state-metrics.yaml</code></td><td>레플리카 · 파드 Ready 지표 (System Status 데이터). 수집 · 권한은 deployments · replicasets · statefulsets · pods · nodes 5종 읽기로 한정. blackbox exporter는 없음(10/13 3차)</td><td>kubectl</td></tr>
 <tr><td><code>observability/loki.yaml</code></td><td>로그 저장소 · 단일 바이너리 · StatefulSet + PVC 10Gi · 보존 7일(compactor)</td><td>kubectl</td></tr>
-<tr><td><code>observability/zipkin.yaml</code></td><td>트레이스 저장 · UI · 메모리 저장(재시작 · 21:00 삭제 시 사라짐, span 최대 10만)</td><td>kubectl</td></tr>
+<tr><td><code>observability/zipkin.yaml</code></td><td>트레이스 저장 · UI · 메모리 저장(재시작 · 22:00 삭제 시 사라짐, span 최대 10만)</td><td>kubectl</td></tr>
 <tr><td><code>observability/grafana.yaml</code></td><td>Grafana + 데이터소스 자동 등록(Prometheus · Loki · Zipkin — CloudWatch 는 5주차 IRSA 와 함께). 디스크 없음(설정 · 대시보드는 git 파일)</td><td>kubectl</td></tr>
 <tr><td><code>observability/dashboards/*.json</code></td><td>대시보드 정의 (System Status · RED · JVM · 비즈니스 · 클러스터 · Lambda)</td><td>ConfigMap으로 프로비저닝</td></tr>
 <tr><td><code>observability/alerting/</code></td><td>알림 규칙 · 연락처(Discord/Slack 웹훅)</td><td>ConfigMap으로 프로비저닝</td></tr>
@@ -1102,7 +1102,7 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 <tr><td>backend <code>.github/workflows/serverless.yml</code></td><td>바뀐 함수 <code>serverless deploy</code></td></tr>
 <tr><td>frontend <code>.github/workflows/frontend.yml</code></td><td>PR lint · build 검사</td></tr>
 <tr><td>config <code>.github/workflows/infra.yml</code></td><td>Terraform fmt · validate · plan (apply 없음)</td></tr>
-<tr><td>config <code>.github/workflows/infra-schedule.yml</code></td><td>KST 07:00 <code>cluster/</code> apply → bootstrap 호출 / KST 21:00 ArgoCD 앱 · LB Service · PVC 삭제 → <code>cluster/</code> destroy. <code>workflow_dispatch</code>(up/down)</td></tr>
+<tr><td>config <code>.github/workflows/infra-schedule.yml</code></td><td>KST 08:00 <code>cluster/</code> apply → bootstrap 호출 / KST 22:00 ArgoCD 앱 · LB Service · PVC 삭제 → <code>cluster/</code> destroy. <code>workflow_dispatch</code>(up/down)</td></tr>
 <tr><td>config <code>.github/workflows/bootstrap.yml</code></td><td>kubeconfig → <code>deploy/k8s/</code> → secrets-sync → <code>deploy/observability/</code> → ArgoCD 설치 + Application</td></tr>
 <tr><td>config <code>.github/workflows/secrets-sync.yml</code></td><td>GitHub Secrets → K8s Secret 생성 · 갱신(멱등)</td></tr>
 <tr><td>세 저장소 <code>.github/workflows/security.yml</code></td><td>gitleaks</td></tr>
@@ -1427,11 +1427,11 @@ gotgan-config/                ArgoCD가 감시하는 쪽 · 인프라 자동화
 <tr data-p="1"><td class="id">SYS-12</td><td><b>정적 분석</b><span class="tag">시스템</span></td><td><ul><li>SonarQube Cloud 무료 플랜 — GitHub Actions에서 Gradle <code>sonar</code>, main 대상 PR에 품질 게이트 · 이슈 코멘트</li><li>비공개 저장소 5만 줄 한도 → 넘으면 중단</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">PR 코멘트</td></tr>
 <tr data-p="1"><td class="id">SYS-13</td><td><b>성능</b><span class="tag">시스템</span></td><td><ul><li>상품 목록 · 상세 p95 500ms 이하 (dev, 동시 사용자 50 기준)</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">k6 · Grafana p95</td></tr>
 <tr data-p="1"><td class="id">SYS-14</td><td><b>UI</b><span class="tag">시스템</span></td><td><ul><li>375px 가로 스크롤 없음 · 목업 디자인 원칙 유지 · 주요 버튼 키보드 접근</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">모바일 뷰 점검</td></tr>
-<tr data-p="1"><td class="id">SYS-15</td><td><b>비용</b><span class="tag">시스템</span></td><td><ul><li>클러스터 매일 07:00 생성 · 21:00 삭제(SYS-20) · 발표 후 전체 destroy</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">Project 태그 (Budgets · Cost Explorer는 연계 계정이라 불가)</td></tr>
+<tr data-p="1"><td class="id">SYS-15</td><td><b>비용</b><span class="tag">시스템</span></td><td><ul><li>클러스터 매일 08:00 생성 · 22:00 삭제(SYS-20) · 발표 후 전체 destroy</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">Project 태그 (Budgets · Cost Explorer는 연계 계정이라 불가)</td></tr>
 <tr data-p="2"><td class="id">SYS-16</td><td><b>ArgoCD 롤백 시연</b><span class="tag">시스템</span></td><td><ul><li>이전 리비전으로 롤백 → System Status에서 교체 확인</li></ul></td><td><span class="p p2">P2</span></td><td class="ref">ArgoCD History</td></tr>
 <tr data-p="2"><td class="id">SYS-17</td><td><b>게이트웨이 속도 제한 · API HTTPS</b><span class="tag">시스템</span></td><td><ul><li>경로별 요청 제한 · API 인증서는 10/20 Route 53 · ACM(NLB 443 TLS)으로 적용 완료</li></ul></td><td><span class="p p2">P2</span></td><td class="ref">gateway · ACM</td></tr>
 <tr data-p="x"><td class="id">SYS-18</td><td><b>오토스케일링 · 파티셔닝 · CQRS/캐시 · 운영(prod) 환경</b></td><td><ul><li>범위 밖 — HPA · 이력 테이블 파티셔닝 · 읽기 모델은 가이드라인 20장 "실무에서는"</li></ul></td><td><span class="p px">제외</span></td><td class="ref">—</td></tr>
-<tr data-p="1"><td class="id">SYS-19</td><td><b>Redis 장애 시 장바구니 MySQL 폴백</b><span class="tag">시스템</span></td><td><ul><li>장바구니 원본 MySQL <code>cart_item</code> · Redis <code>cart:{userId}</code>는 캐시(write-through · read-through)</li><li>Resilience4j 서킷 <code>redisCart</code> + 폴백 → Redis 다운 시 장바구니 · 주문서 정상(지연만), 서킷 OPEN이 Grafana에 보임 · Redis AOF + PVC</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">Redis 0개 → 장바구니 정상 · 서킷 패널</td></tr><tr data-p="0"><td class="id">SYS-20</td><td><b>인프라 일일 스케줄 · 부트스트랩</b><span class="tag">시스템</span></td><td><ul><li><code>infra-schedule</code>: KST 07:00 <code>cluster/</code> apply → <code>bootstrap</code>(k8s 기본 계층 · secrets-sync · 관측성 · ArgoCD → 서비스 9개), KST 21:00 ArgoCD 앱 · LB Service · PVC 삭제 → destroy</li><li>vpc · ecr · cicd · app 상시 · EIP 고정(Route 53 · ACM 변경 없음) · 매일 아침 빈 DB는 Flyway 시드 · Keycloak 시드 계정으로 복원 · 실패 시 <code>workflow_dispatch</code>로 수동 재실행</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">아침 자동 생성 후 System Status 전부 초록</td></tr>
+<tr data-p="1"><td class="id">SYS-19</td><td><b>Redis 장애 시 장바구니 MySQL 폴백</b><span class="tag">시스템</span></td><td><ul><li>장바구니 원본 MySQL <code>cart_item</code> · Redis <code>cart:{userId}</code>는 캐시(write-through · read-through)</li><li>Resilience4j 서킷 <code>redisCart</code> + 폴백 → Redis 다운 시 장바구니 · 주문서 정상(지연만), 서킷 OPEN이 Grafana에 보임 · Redis AOF + PVC</li></ul></td><td><span class="p p1">P1</span></td><td class="ref">Redis 0개 → 장바구니 정상 · 서킷 패널</td></tr><tr data-p="0"><td class="id">SYS-20</td><td><b>인프라 일일 스케줄 · 부트스트랩</b><span class="tag">시스템</span></td><td><ul><li><code>infra-schedule</code>: KST 08:00 <code>cluster/</code> apply → <code>bootstrap</code>(k8s 기본 계층 · secrets-sync · 관측성 · ArgoCD → 서비스 9개), KST 22:00 ArgoCD 앱 · LB Service · PVC 삭제 → destroy</li><li>vpc · ecr · cicd · app 상시 · EIP 고정(Route 53 · ACM 변경 없음) · 매일 아침 빈 DB는 Flyway 시드 · Keycloak 시드 계정으로 복원 · 실패 시 <code>workflow_dispatch</code>로 수동 재실행</li></ul></td><td><span class="p p0">P0</span></td><td class="ref">아침 자동 생성 후 System Status 전부 초록</td></tr>
 <tr data-p="0"><td class="id">SYS-21</td><td><b>시크릿 GitHub Secrets 동기화</b><span class="tag">시스템</span></td><td><ul><li>비밀 값은 GitHub Secrets(gotgan-config · gotgan-backend) · Vercel 환경 변수에만 — Secrets Manager · KMS · ESO 없음</li><li><code>secrets-sync</code> 워크플로가 <code>mysql-secret</code> · <code>{service}-secret</code> · <code>keycloak-secret</code> · <code>grafana-secret</code> · <code>alert-webhook-secret</code> 생성(멱등) · realm JSON · YAML은 자리표시자만 · 목록은 <code>docs/secrets.md</code></li></ul></td><td><span class="p p0">P0</span></td><td class="ref">secrets-sync 실행 후 파드 기동 · gitleaks</td></tr>
 <tr data-p="0"><td class="id">SYS-22</td><td><b>DB 티어 분리 · NetworkPolicy</b><span class="tag">시스템</span></td><td><ul><li>3티어: 프론트(Vercel) → 백(EKS <code>app</code> 노드 그룹 t3.xlarge ×2) → DB(EKS <code>db</code> 노드 그룹 t3.medium ×1, 2a, 테인트 <code>tier=db:NoSchedule</code>) — MySQL · Redis만 db 노드에</li><li><code>02-networkpolicy.yaml</code>: DB 파드 3306 · 6379는 <code>tier=backend</code> 파드만, DB 파드 egress는 DNS뿐. 사용자 → DB · Vercel → 서비스 직접 경로 없음(예외는 presigned S3 PUT)</li></ul></td><td><span class="p p0">P0</span></td><td class="ref"><code>kubectl get pod -o wide</code>(노드 배치) · 라벨 없는 파드에서 3306 접속 실패</td></tr>
 </table></div>

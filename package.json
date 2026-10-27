@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "convention": "node scripts/md2html.mjs content/project-convention.md content/project-convention.html"
+    "convention": "node scripts/md2html.mjs content/project-convention.md content/project-convention.html",
+    "split-convention": "node scripts/split-convention.mjs content/project-convention.md ../../gotgan/gotgan-backend/docs/CONVENTION.md ../../gotgan/gotgan-frontend/docs/CONVENTION.md ../../gotgan/gotgan-config/docs/CONVENTION.md"
   },
   "dependencies": {
     "react": "^18.3.1",

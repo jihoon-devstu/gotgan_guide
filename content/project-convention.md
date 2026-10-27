@@ -45,7 +45,7 @@
 | 5 | 에러 코드 형식 | 의미형 `{도메인}_{상황}` — `ORDER_OUT_OF_STOCK` | 2-5 |
 | 6 | 프론트 언어 | JavaScript (`.js` / `.jsx`) — 목업 그대로 | 4-1 |
 | 7 | 프론트 페이지 위치 | `pages/{shop · mypage · seller · admin}/` — 로직은 `features/` | 4-2 |
-| 8 | Redis 키 이름 | `{용도}:{식별자}` — `cart:{userId}`(캐시, 원본은 `orderdb.cart_item`) · `blacklist:{jti}`(Could). 리프레시 토큰 키는 폐지(Keycloak이 관리) | 2-2 |
+| 8 | Redis 키 이름 | `{용도}:{식별자}` — `cart:{userId}`(캐시, 원본은 `orderdb.cart_item`) · `blacklist:{jti}`(Could) · `blocked:user:{userId}`(탈퇴 · 정지 회원 토큰 차단) · `chat:room:{roomId}` · `chat:presence:{roomId}` · `notify:{받는 쪽}`(10/27). 리프레시 토큰 키는 폐지(Keycloak이 관리) | 2-2 |
 
 ### 0-4. 10/12 추가 확정
 
@@ -61,7 +61,7 @@
 | 코드 품질 | SonarQube Cloud — main 대상 PR에 품질 게이트 | 1-3 |
 | (10/13) 저장소 3개 | `gotgan-backend`(services · serverless · docker-compose · docs/api) · `gotgan-frontend`(React 루트) · `gotgan-config`(deploy · infra/terraform · scripts · docs). 모노레포 폐지. 각 저장소 `docs/CONVENTION.md`는 이 문서의 발췌본(자동 생성) — 이 문서만 고친다 | 1-4 · 5-5 |
 | (10/13) 시크릿 | **GitHub Secrets 단일 소스**(클러스터 · CI) · Vercel 환경 변수(프론트). Secrets Manager · KMS · ESO 없음. `secrets-sync` 워크플로가 K8s Secret 생성 | 1-5 · 5-3 |
-| (10/13) 인프라 일일 스케줄 | `infra/terraform/cluster/`는 `infra-schedule` 워크플로가 매일 KST 08:00 apply(→ `bootstrap`) · 22:00 destroy. 나머지 폴더는 상시. apply/destroy는 워크플로 또는 구지훈 | 5-2 |
+| (10/13) 인프라 일일 스케줄 | `infra/terraform/cluster/`는 `infra-schedule` 워크플로가 매일 KST 08:00 apply(→ `bootstrap`) · 22:00 destroy (10/26 부터 EventBridge Scheduler → Lambda 가 실행). 나머지 폴더는 상시. apply/destroy는 워크플로 또는 구지훈 | 5-2 |
 | (10/13) Redis 폴백 | 장바구니 원본은 MySQL `orderdb.cart_item`, Redis `cart:{userId}`는 캐시. Redis 호출은 서킷 인스턴스 `redisCart` + 폴백(MySQL) | 2-2 · 2-7 · 3-2 |
 | (10/13 3차) 3티어(db 노드 분리 · NetworkPolicy) | 프론트(Vercel) → 백(EKS `app` 노드 그룹 t3.xlarge ×2 — 10/14 t3.large에서 조정) → DB(EKS `db` 노드 그룹 t3.medium ×1, 테인트 `tier=db:NoSchedule`, MySQL · Redis만). `02-networkpolicy.yaml`로 DB 3306 · 6379는 `tier=backend` 파드만. blackbox exporter 없음. 파일 업로드만 presigned URL로 브라우저 → S3 직접(예외) | 5-3 |
 
@@ -1054,7 +1054,7 @@ function AdminStoreListPage() {
 - [ ] `@Transactional`이 서비스에만 있고, 원격 호출이 트랜잭션 밖에 있는가?
 - [ ] 다른 서비스 호출에 Resilience4j 표준(타임아웃 · 서킷 브레이커 · 멱등 GET만 재시도 · 폴백)이 적용되고 실패가 도메인 예외로 변환되는가?
 - [ ] 대시보드 조합이 병렬 호출이고, 한 서비스가 실패해도 `unavailable` 부분 응답(200)을 주는가? 연쇄 호출(2홉 이상)이 없는가?
-- [ ] admin-service에 entity · repository · DB 접근이 없고(예외 `report` — admindb), 도메인 서비스에 `/api/admin/**`이 없는가?
+- [ ] admin-service에 entity · repository · DB 접근이 없고(예외 `report` — admindb · `notification` — DynamoDB inbox), 도메인 서비스에 `/api/admin/**`이 없는가?
 - [ ] 동적 검색이 QueryDSL이고, `@Query` · 네이티브 쿼리에 문자열 이어 붙이기가 없는가?
 - [ ] 사용자 입력 HTML(리뷰 · 문의 · 입점 신청)을 저장 전에 Sanitizer로 정화하는가?
 - [ ] 소유권 검사(storeId · userId)가 있는가?

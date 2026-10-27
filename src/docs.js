@@ -10,7 +10,7 @@ export const DOCS = [
     name: '가이드라인',
     question: '왜',
     summary: '설계 배경과 결정 이유',
-    points: ['서비스 9개 + Keycloak · 담당자 확정', 'Saga · 장애 격리 · 인증 · 결제 결정', '10/12~11/20 일정 · 3티어 · 결정 기록 · 위험 요소'],
+    points: ['서비스 10개 + Keycloak · 담당자 확정', 'Saga · 장애 격리 · 인증 · 결제 결정', '10/12~11/20 일정 · 3티어 · 결정 기록 · 위험 요소'],
     scope: 'doc-g',
     raw: guidelineRaw,
   },
@@ -40,9 +40,9 @@ export const MOCKUP_URL = 'https://mockup-page-sable.vercel.app/';
 // 목업 화면 영역별 시작 경로 (MockupPage README "사용자별 진입 경로")
 export const MOCKUP_AREAS = [
   { name: '쇼핑몰', path: '/', who: '구매자', desc: '메인 · 상품 목록/상세 · 스토어 · 장바구니 · 주문서 · 입점 신청' },
-  { name: '마이페이지', path: '/mypage/orders', who: '구매자', desc: '주문/배송 · 클레임 · 리뷰 · 포인트 · 회원정보 · 배송지' },
-  { name: '판매자센터', path: '/seller', who: '판매자', desc: '대시보드 · 상품 · 주문 · 클레임 · 정산 · 스토어 설정' },
-  { name: '관리자', path: '/admin', who: '스토어 관리자', desc: '대시보드 · 입점 심사 · 스토어 · 정산 · 회원 · 카테고리' },
+  { name: '마이페이지', path: '/mypage/orders', who: '구매자', desc: '주문/배송 · 클레임 · 리뷰 · 1:1 채팅 · 포인트 · 회원정보 · 배송지' },
+  { name: '판매자센터', path: '/seller', who: '판매자', desc: '대시보드 · 상품 · 주문 · 클레임 · 채팅 · 정산 · 스토어 설정' },
+  { name: '관리자', path: '/admin', who: '스토어 관리자', desc: '대시보드 · 입점 심사 · 스토어 · 정산 · 회원 · 상담함 · 카테고리' },
 ];
 export const mockupUrl = (path) => new URL(path, MOCKUP_URL).href;
 
@@ -51,7 +51,7 @@ export const PARTS = [
   {
     key: 'backend',
     name: '백엔드',
-    desc: 'Spring Boot 서비스 9개 · Keycloak · DB · Saga · 장애 격리',
+    desc: 'Spring Boot 서비스 10개 · Keycloak · DB · Saga · 장애 격리',
     links: [
       ['spec', 'p-be', '2-1', '백엔드 스펙', '스택 · 서비스 구성 · 공통 규칙 · 패키지 구조'],
       ['spec', 'f-svc', '03-2', 'services/ 파일 역할', '빌드 파일 · Java 패키지 · resources · 테스트'],
@@ -133,7 +133,7 @@ export const PARTS = [
     links: [
       ['convention', 'c0-3', '0-3', '확정 컨벤션 요약', '10/08 확정 8가지 · 0-4 추가 확정'],
       ['guideline', 's15', '18', '결정 기록', '10/08 컨벤션 · 10/12 멘토링 · 10/13 회의 · 10/14 사이징'],
-      ['guideline', 's3', '03', '서비스 구성 · 업무 분장', '서비스 9개 · 담당자 확정'],
+      ['guideline', 's3', '03', '서비스 구성 · 업무 분장', '서비스 10개 · 담당자 확정'],
       ['guideline', 's13', '16', '일정 · 범위', '10/12~11/20 주차별 계획 · MoSCoW'],
       ['guideline', 's14', '17', '사전 학습', '담당자별 체크리스트'],
       ['guideline', 's16', '19', '위험 요소', '자주 막히는 곳'],

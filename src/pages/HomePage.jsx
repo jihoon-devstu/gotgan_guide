@@ -40,7 +40,7 @@ export default function HomePage() {
         <h1>곳간 프로젝트 문서</h1>
         <p>소상공인을 위한 스마트스토어형 오픈마켓 · MSA · AWS EKS · 3인 · 2026-10-12 ~ 11-20</p>
         <ul className="hero-facts">
-          <li><b>서비스</b>게이트웨이 + 업무 8개 + Keycloak</li>
+          <li><b>서비스</b>게이트웨이 + 업무 9개 + Keycloak</li>
           <li><b>백엔드</b>Java 21 · Spring Boot 4.1</li>
           <li><b>프론트</b>React · TanStack · Vercel</li>
           <li><b>저장소</b>backend · frontend · config</li>
@@ -71,7 +71,7 @@ export default function HomePage() {
         <div className="mockup-banner">
           <div className="mockup-banner-text">
             <span className="mockup-tag">MOCKUP</span>
-            <b>목업 화면 42개</b>
+            <b>목업 화면 56개</b>
             <span>배포된 화면 목업 — 요구사항 · 화면 구현의 기준</span>
           </div>
           <a className="mockup-open" href={MOCKUP_URL} target="_blank" rel="noreferrer">
@@ -90,7 +90,7 @@ export default function HomePage() {
             </li>
           ))}
         </ul>
-        <p className="home-lead">화면 왼쪽 아래 <b>MOCK 화면 목록</b> 버튼으로 42개 화면 어디로든 이동할 수 있습니다. 데이터는 하드코딩이며 새로고침하면 초기화됩니다.</p>
+        <p className="home-lead">화면 왼쪽 아래 <b>MOCK 화면 목록</b> 버튼으로 56개 화면 어디로든 이동할 수 있습니다. 데이터는 하드코딩이며 새로고침하면 초기화됩니다.</p>
       </section>
 
       <section className="home-block">
@@ -160,14 +160,14 @@ export default function HomePage() {
         <ul className="quick">
           <li><Link to="/guideline#s15"><b>가이드라인 18</b>결정 기록 — 10/08 컨벤션 · 10/12 멘토링 · 10/13 회의 · 10/14 사이징</Link></li>
           <li><Link to="/convention#c0-3"><b>컨벤션 0-3</b>확정 컨벤션 요약</Link></li>
-          <li><Link to="/guideline#s3"><b>가이드라인 03</b>서비스 구성 · 업무 분장 — 서비스 9개 · 담당자</Link></li>
+          <li><Link to="/guideline#s3"><b>가이드라인 03</b>서비스 구성 · 업무 분장 — 서비스 10개 · 담당자</Link></li>
           <li><Link to="/guideline#s2"><b>가이드라인 02</b>전체 아키텍처 구조도 — 3티어 · AWS · 흐름 15개</Link></li>
                     <li><Link to="/spec#s5"><b>스펙 06</b>P0 완료 기준 — 11/11까지 완주할 E2E 시나리오 · 복원력 시연</Link></li>
         </ul>
       </section>
 
       <footer className="home-foot">
-        <span>목업 화면 42개는 <a href={MOCKUP_URL} target="_blank" rel="noreferrer">mockup-page-sable.vercel.app ↗</a></span>
+        <span>목업 화면 56개는 <a href={MOCKUP_URL} target="_blank" rel="noreferrer">mockup-page-sable.vercel.app ↗</a></span>
         <span>문서 원본은 저장소 <code>content/</code> — 수정 후 main에 push하면 자동 배포</span>
         <span>컨벤션 MD를 고쳤다면 <code>npm run convention</code>으로 HTML 재생성</span>
       </footer>

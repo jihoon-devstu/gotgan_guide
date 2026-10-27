@@ -142,11 +142,11 @@ com.sesac.gojigi.{service}            # service = gateway · user · store · pr
 ```
 
 - 해당 도메인에 필요 없는 패키지는 만들지 않음 (예: `cart`는 `entity` 없음)
-- **공통 모듈 `libs/common-web`**(Gradle composite build) — 응답 봉투(`ApiResponse` · `PageResponse`) · 예외(`ErrorCode` · `CommonErrorCode` · `BusinessException` · `GlobalExceptionHandler`, 404 · 405 포함) · `@CurrentUser` · `AuthUser` · 로그 MDC `userId` 필터 · `/actuator` 트레이스 제외. 서비스마다 복사하지 않고 `com.sesac.gojigi.common.web.*`를 import. 서블릿 전용이라 gateway 제외, 9개 중 7개 적용(admin은 아직 미이관)
+- **공통 모듈 `libs/common-web`**(Gradle composite build) — 응답 봉투(`ApiResponse` · `PageResponse`) · 예외(`ErrorCode` · `CommonErrorCode` · `BusinessException` · `GlobalExceptionHandler`, 404 · 405 포함) · `@CurrentUser` · `AuthUser` · 로그 MDC `userId` 필터 · `/actuator` 트레이스 제외. 서비스마다 복사하지 않고 `com.sesac.gojigi.common.web.*`를 import. 서블릿 전용이라 gateway 제외, 10개 중 8개 적용(review는 아직 미이관, chat은 10/27 처음부터 적용)
 - 도메인 에러 코드는 각 서비스 `{domain}/exception/{Domain}ErrorCode implements ErrorCode`
 - **DB가 없는(거의 없는) 서비스 두 곳**
   - gateway-service: `config` · `filter` · `exception`만
-  - admin-service: 도메인 패키지에 `controller` · `service` · `client` · `dto`만 — **`entity` · `repository` 없음**, 데이터는 각 서비스 `/internal/**` 호출로만 다룸. 예외는 `report`(신고 · 조치 이력 — admindb entity · repository · Flyway, ADR-0001 예외 10/26)뿐
+  - admin-service: 도메인 패키지에 `controller` · `service` · `client` · `dto`만 — **`entity` · `repository` 없음**, 데이터는 각 서비스 `/internal/**` 호출로만 다룸. 예외는 `report`(신고 · 조치 이력 — admindb entity · repository · Flyway, ADR-0001 예외 10/26) · `notification`(알림함 — DynamoDB `sesac-gojigi-inbox` repository, 10/27)뿐
 
 **서비스별 도메인**
 
@@ -160,8 +160,8 @@ com.sesac.gojigi.{service}            # service = gateway · user · store · pr
 | payment-service | paymentdb | `payment`(포트원 V2 검증 · 취소 · 웹훅) |
 | review-service | reviewdb | `review`(사진 · 별점 · 판매자 답글) · `inquiry`(상품문의 · 답변) · `eligibility`(리뷰 작성 자격) |
 | settlement-service | settlementdb | `settlement`(적재 · 집계 · 지급 · 보류) · `commission`(카테고리별 수수료) |
-| admin-service | admindb(신고만) | `application` · `store` · `category` · `settlement` · `user` · `dashboard` · `review` — `/internal/**` 호출 조합, `report`(신고 · 조치 이력, 10/26) · `notification`(알림 센터, 10/27 예정) |
-| chat-service (10/27 예정) | chatdb | `room` · `message`(1:1 채팅 — 스토어 톡 · 판매자 운영 상담 · 고객센터 상담) · `config`(STOMP · Redis) |
+| admin-service | admindb(신고만) | `application` · `store` · `category` · `settlement` · `user` · `dashboard` · `review` — `/internal/**` 호출 조합, `report`(신고 · 조치 이력, 10/26) · `notification`(알림 센터 — SQS 3큐 · 알림함 · SSE, 10/27) |
+| chat-service (10/27) | chatdb | `room`(방 · 메시지 · 읽음 — 스토어 톡 · 판매자 운영 상담 · 고객센터 상담) · `realtime`(STOMP · Redis 중계 · 접속 중 · 입력 중 · 속도 제한) · `directory`(이름 조회 — user · store `/internal/**`) · `retention`(90일 뒤 삭제) |
 
 **도메인 경계 기준**
 
@@ -236,6 +236,10 @@ com.sesac.gojigi.{service}            # service = gateway · user · store · pr
 |---|---|---|
 | `cart:{userId}` | order | 장바구니 Hash — **캐시**, 원본은 MySQL `orderdb.cart_item`. 쓰기는 MySQL 먼저 → Redis 갱신(실패 무시 · WARN), 읽기는 Redis → 미스 · 장애 시 MySQL. 서킷 인스턴스 `redisCart` (Must) |
 | `blacklist:{jti}` | gateway | 로그아웃한 Access Token 즉시 무효화 — Redis 전용, 원본 없음 (Could) |
+| `blocked:user:{userId}` | user (쓰기) · gateway · chat (읽기) | 탈퇴 · 이용정지 회원의 남은 토큰 차단 — 게이트웨이 요청 거절, chat 은 WebSocket CONNECT 거절. Redis 장애면 확인 없이 통과(fail-open) |
+| `chat:room:{roomId}` | chat | 1:1 채팅 파드 간 중계 Pub/Sub 채널 — 파드당 패턴 구독 `chat:room:*` 1개 (10/27) |
+| `chat:presence:{roomId}` | chat | 접속 중 표시 ZSET — 점수 = 만료 시각(20초마다 연장 · 60초 TTL), 보고 있는 쪽엔 알림을 보내지 않음 (10/27) |
+| `notify:{받는 쪽}` | admin | 알림 센터 실시간 Pub/Sub 채널(`USER#{id}` · `STORE#{id}` · `ADMIN`) — 모든 파드가 자기 SSE 연결에 전달 (10/27) |
 
 - 한 Redis를 여러 서비스가 공유하므로 **다른 서비스의 키 접두어 사용 금지**
 - 리프레시 토큰은 Keycloak이 관리 — Redis에 `refresh:` 키를 만들지 않음. 상품 캐시 키도 없음
@@ -393,10 +397,11 @@ RuntimeException
 | `PAYMENT` | payment | `PAYMENT_AMOUNT_MISMATCH` 결제 금액 불일치 |
 | `REVIEW` · `INQUIRY` | review | `REVIEW_NOT_ELIGIBLE` 작성 자격 없음 · `INQUIRY_NOT_FOUND` |
 | `SETTLE` · `COMMISSION` | settlement | `SETTLE_ALREADY_AGGREGATED` 이미 집계된 주차 · `COMMISSION_RATE_INVALID` |
-| (없음 — 그대로 전달) | admin | 하위 서비스가 보낸 `ApiResponse`의 `code` · `message`를 **바꾸지 않고 전달**, 연결 실패 · 타임아웃만 `EXTERNAL_API_ERROR` |
+| `CHAT` | chat | `CHAT_ROOM_NOT_FOUND` 없거나 남의 방 · `CHAT_STORE_INACTIVE` 정지 · 폐점 스토어 · `CHAT_TOO_FAST` 연결마다 1초 5건 초과(STOMP 오류 큐 `/user/queue/errors`) (10/27) |
+| (조합은 그대로 전달) · `CATEGORY` · `REPORT` · `NOTIFICATION` | admin | 하위 서비스가 보낸 `ApiResponse`의 `code` · `message`를 **바꾸지 않고 전달**, 연결 실패 · 타임아웃만 `EXTERNAL_API_ERROR`. admin 이 판단하는 것만 자체 코드 — `CATEGORY_COMMISSION_REQUIRED` 수수료 없이 활성화 · `REPORT_DUPLICATED` 중복 신고 · `NOTIFICATION_NOT_FOUND` |
 | 공통 (도메인 접두어 없음) | 전체 | `SUCCESS` · `INVALID_INPUT` · `UNAUTHORIZED` · `FORBIDDEN` · `NOT_FOUND` · `METHOD_NOT_ALLOWED` · `EXTERNAL_API_ERROR` · `GLOBAL_ERROR` |
 
-- admin-service는 자체 도메인 에러 코드를 만들지 않습니다. 관리자 화면이 받는 코드는 데이터 주인 서비스의 코드 그대로 (`APPLY_REAPPLY_RESTRICTED` 등)
+- admin-service는 조합 · 전달만 하는 API 에서는 자체 에러 코드를 만들지 않습니다. 관리자 화면이 받는 코드는 데이터 주인 서비스의 코드 그대로 (`APPLY_REAPPLY_RESTRICTED` 등). 예외 — admin 이 판단 · 데이터 주인인 곳: 카테고리 · 수수료 조합 `CATEGORY_*`(10/20), 신고 · 조치 `REPORT_*`(10/26 admindb), 알림 센터 `NOTIFICATION_*`(10/27)
 
 **새 도메인 예외 추가 (3단계)**
 
@@ -451,7 +456,7 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 - Repository는 Spring Data JPA 쿼리 메서드 네이밍(`findByStoreIdAndStatus`, `existsByEmail`)
 - 동적 조건 검색(카테고리 · 가격 · 키워드 · 정렬 · 페이징)은 **QueryDSL** — `{Entity}RepositoryCustom` + `{Entity}RepositoryImpl`, 조건은 `BooleanExpression` 메서드로 분리 (null이면 조건 생략)
 - **SQL Injection 방지**: JPA · QueryDSL 파라미터 바인딩만 사용. `@Query` · 네이티브 쿼리에 **문자열 이어 붙이기 금지** (`"... WHERE name LIKE '%" + keyword + "%'"` ✗ → `:keyword` 바인딩), 정렬 컬럼은 허용 목록으로 매핑 — SonarQube가 검출
-- **XSS 방지**: 리뷰 · 문의 · 입점 신청 등 사용자가 입력한 HTML은 **OWASP Java HTML Sanitizer**로 **저장 전** 정화 (`common/util`의 정책 하나를 공유). 일반 텍스트 필드는 프론트에서 이스케이프 출력(React 기본), `dangerouslySetInnerHTML`은 정화된 값에만
+- **XSS 방지**: 리뷰 · 문의 · 입점 신청 등 사용자가 입력한 HTML은 **OWASP Java HTML Sanitizer**로 **저장 전** 정화 (`common/util`의 정책 하나를 공유). 일반 텍스트 필드는 프론트에서 이스케이프 출력(React 기본), `dangerouslySetInnerHTML`은 정화된 값에만 — 화면에서 HTML(상품 상세 · 스토어 소개 등)을 그릴 때는 `shared/utils/safeHtml.js`(DOMPurify)를 한 번 더 거침 (10/27)
 - 동시성: 재고처럼 경합하는 값은 **조건부 UPDATE**(`@Modifying @Query`), 엔티티 동시 수정은 `@Version`
 - **서비스 메서드는 `userId` · `storeId` 등 원시값을 파라미터로 받음** — 테스트 · 스레드 안전성
 
@@ -476,6 +481,7 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 
 - 목표: **서비스 하나가 죽어도 호출한 쪽은 에러 메시지로 1차 처리**하고 나머지 화면 · 기능은 정상
 - Redis 호출(장바구니 캐시)도 같은 표준: 서킷 인스턴스 `redisCart` + 폴백 → MySQL `cart_item` 원본 조회. 쓰기는 MySQL 먼저, Redis 갱신 실패는 WARN 로그만 — Redis가 죽어도 장바구니는 정상(지연만)
+- 예외 (10/27): chat-service 의 알림 전송(admin `/internal/notifications`) · 이름 · 스토어 상태 조회(user · store)는 **빠져도 되는 부가 정보**라 서킷 없이 짧은 타임아웃(연결 1초 · 읽기 2초)과 실패 무시(fail-open)로 처리 — 알림은 전용 스레드 2 · 대기 500건, 이름은 캐시(10분 · 스토어 1분) 후 번호 표시. 채팅 전송 · 저장 경로는 이 호출을 기다리지 않음
 
 **대시보드 조합**
 
@@ -575,6 +581,7 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 | paymentdb | `payment` · `payment_cancel` |
 | reviewdb | `review` · `review_image` · `review_eligibility` · `product_inquiry` · `processed_event` |
 | settlementdb | `category_commission` · `settlement_store`(StoreApproved 스냅샷: 스토어명 · 정산 계좌) · `settlement_item` · `settlement` · `payout` · `processed_event` · `shedlock` |
+| chatdb | `chat_room` · `chat_message` · `chat_read` · `shedlock` (10/27) |
 | keycloakdb | Keycloak 관리 (계정 · 역할 · 세션) |
 
 ### 3-3. 컬럼
@@ -735,18 +742,19 @@ public abstract class BaseTimeEntity {
 | 스타일 | Tailwind CSS v4 | 디자인 토큰은 `styles/index.css`의 `@theme` (목업 토큰) |
 | UI 컴포넌트 | 목업 공통 컴포넌트 | `shared/components/ui/` — shadcn 등 새 UI 키트 도입 안 함 |
 | 차트 · 토스트 | 목업 SVG 차트 · 목업 ToastHost | 새 라이브러리 도입 시 팀 합의 |
-| 결제 | `@portone/browser-sdk` | `features/order`에서만 |
+| 결제 | `@portone/browser-sdk` | `features/payment`에서만 (`portone.js`) |
 | 목킹 | MSW | `src/mocks/` |
 | 테스트 | Vitest + React Testing Library | 대상: 유틸 · zod 스키마 · 핵심 훅 |
 
 ### 4-2. 프로젝트 구조
 
-도메인(기능) 기반 구조. **백엔드 서비스와 `features/{도메인}`이 대칭** (payment는 화면이 없어 `features/order`의 결제 흐름에 포함).
+도메인(기능) 기반 구조. **백엔드 서비스와 `features/{도메인}`이 대칭** (payment 는 화면 없이 포트원 결제창 · 결제 확인 로직만 `features/payment` 에 두고 주문서 화면(`features/order`)이 부름 — 결제 확인 엔드포인트는 order).
 
 ```
 gotgan-frontend/src/
 ├── app/                          # 앱 전역
-│   ├── router.jsx                #   전체 라우트 (단일 파일, 도메인별 주석 구획)
+│   ├── router.jsx                #   전체 라우트 (단일 파일, 도메인별 주석 구획 · 경로 → 파일 표 + 지연 로딩)
+│   ├── RouteError.jsx            #   화면 받기 실패(배포 직후 옛 파일) → 새로고침 안내
 │   ├── providers.jsx             #   QueryClientProvider 등
 │   ├── bootstrap.js              #   부팅 시 refresh 1회 → 로그인 상태 복구
 │   └── App.jsx
@@ -764,6 +772,11 @@ gotgan-frontend/src/
 │   ├── review/                   #   리뷰 · 상품문의 · 판매자 답글
 │   ├── admin/                    #   관리자 화면 전부 (admin-service만 호출)
 │   ├── support/                  #   FAQ (프론트 정적 데이터)
+│   ├── chat/                     #   1:1 채팅 — 구매자 · 판매자 · 관리자 상담함 공용 (chat-service, STOMP, 10/27)
+│   ├── notification/             #   알림 벨 · 알림 목록 · SSE (admin-service 알림 센터, 10/27)
+│   ├── payment/                  #   포트원 결제창 · 결제 확인 로직 (화면 없음 — 주문서가 부름, 담당 구지훈)
+│   ├── report/                   #   신고 접수 모달 (admin-service /api/reports, 담당 구지훈)
+│   ├── qa/                       #   임시 점검 화면 /qa — 시연 전 삭제
 │   └── settlement/               #   판매자 정산
 │       ├── api/                  #     settlementApi.js
 │       ├── hooks/                #     useSettlementsQuery.js · usePaySettlementMutation.js
@@ -802,6 +815,7 @@ gotgan-frontend/src/
 - `isAuthReady` 이전에는 판단하지 않음 (새로고침 시 잘못된 리다이렉트 방지)
 - **프론트 가드는 UX 장치일 뿐, 실제 접근 제어는 게이트웨이 · 서비스**
 - `router.jsx`는 영역 · 도메인별 주석 구획에만 추가, catch-all(`*`)은 항상 맨 마지막
+- **라우트 코드 분할(10/27)**: 화면은 영역별 `{ '경로': '폴더/파일명' }` 표에 한 줄로 추가 — `import.meta.glob` + `route.lazy`로 그 경로에 처음 들어갈 때 받음. 받기에 실패하면(배포 직후 옛 파일) `RouteError`가 새로고침 안내
 
 ### 4-4. 인증
 
@@ -956,7 +970,7 @@ function AdminStoreListPage() {
 
 - **새로고침하면 로그아웃됨** — ① `bootstrap.js`의 refresh 호출 완료 여부 ② 가드가 `isAuthReady` 전에 판단하는지 ③ `authStore`에 AT가 들어갔는지
 - **401 후 자동 재발급이 안 됨** — ① Network 탭에 refresh 요청이 찍히는지 ② `axiosInstance`를 거치지 않는 별도 axios 호출이 있는지
-- **CORS 에러** — 절대경로(`http://...`)로 호출하고 있지 않은지. 로컬은 Vite 프록시, 배포는 Vercel rewrite — 항상 상대경로 `/api/...`
+- **CORS 에러** — 절대경로(`http://...`)로 호출하고 있지 않은지. 로컬은 Vite 프록시, 배포는 Vercel rewrite — 항상 상대경로 `/api/...`. 예외: 알림 SSE `/api/notifications/stream` · 채팅 `wss://api.gotgan.click/ws/chat`은 `api.gotgan.click`에 직접 연결 — 게이트웨이 globalcors가 이 두 경로만 허용(10/27)
 - **`import.meta.env.VITE_...`가 undefined** — `VITE_` 접두사, `.env.local` 수정 후 dev 서버 재시작, Vercel은 환경 변수 추가 후 재배포
 - **포트원 결제창이 안 뜸** — storeId · channelKey 환경 변수, 테스트 채널 키인지, 브라우저 팝업 차단
 
@@ -979,7 +993,7 @@ function AdminStoreListPage() {
 | IAM 역할 (IRSA) | `sesac-gojigi-{service}-irsa` | `sesac-gojigi-order-irsa` |
 | SSM 파라미터 | `/sesac-gojigi/dev/{종류}/{이름}` | `/sesac-gojigi/dev/sqs/notification-queue-arn` |
 | S3 버킷 | `sesac-gojigi-{용도}-{계정ID 끝 4자리}` (전역 유일) | `sesac-gojigi-images-1234`(prefix `products/` · `reviews/` · `stores/`) · `sesac-gojigi-seller-docs-1234` · `sesac-gojigi-reports-1234` · `sesac-gojigi-log-archive-1234` |
-| DynamoDB | `sesac-gojigi-{용도}` | `sesac-gojigi-notifications` · `sesac-gojigi-settlement-reports` (그 외 테이블 없음) |
+| DynamoDB | `sesac-gojigi-{용도}` | `sesac-gojigi-notifications` · `sesac-gojigi-settlement-reports` · `sesac-gojigi-inbox`(알림 센터 알림함, 10/27) (그 외 테이블 없음) |
 
 ### 5-2. Terraform
 
@@ -1020,7 +1034,7 @@ function AdminStoreListPage() {
 
 ### 5-5. Serverless · CI
 
-- 함수 폴더: kebab-case — `order-notification` · `settlement-report` · `log-archive` (3개, 사용자 API 없음), 서비스 이름 `sesac-gojigi-{폴더명}`
+- 함수 폴더: kebab-case — `order-notification` · `settlement-report` · `log-archive` · `upload-guard`(10/27) (4개, 사용자 API 없음), 서비스 이름 `sesac-gojigi-{폴더명}`
 - 핸들러 파일 camelCase (`notify.js`), export 이름 `handler`
 - 워크플로 파일: 영역 이름 kebab-case, job 이름 kebab-case (`bump-tag`). 저장소별 — gotgan-backend `backend.yml` · `serverless.yml` · `security.yml` / gotgan-frontend `frontend.yml` · `security.yml` / gotgan-config `infra.yml` · `infra-schedule.yml` · `bootstrap.yml` · `secrets-sync.yml` · `security.yml`
 - GitHub Secrets: UPPER_SNAKE (`AWS_ROLE_ARN` · `SERVERLESS_ACCESS_KEY` · `CONFIG_REPO_TOKEN` · `{SERVICE}_DB_PASSWORD`), Variables도 UPPER_SNAKE (`AWS_REGION`)

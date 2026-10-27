@@ -11,7 +11,7 @@
 ### 0-1. 판단 원칙
 
 - **"어떻게 쓰나"는 팀 기존 규칙 우선** — 코드 스타일 · 네이밍 · 응답 형식 · 예외 구조 · DB 규칙
-- **"무엇을 만드나"는 프로젝트 스펙 유지** — 서비스 9개 + Keycloak · 엔드포인트 · 이벤트 · 인프라 구성
+- **"무엇을 만드나"는 프로젝트 스펙 유지** — 서비스 10개(10/27 chat 추가) + Keycloak · 엔드포인트 · 이벤트 · 인프라 구성
 - **MSA 전용 규칙 추가** — 서비스 간 호출 · Resilience4j · 대시보드 조합 · 이벤트 · Saga · 멱등성 · 인프라 네이밍
 - 규칙끼리 충돌하면 이 문서가 우선, 다른 문서는 이 문서에 맞춰 수정
 
@@ -51,8 +51,8 @@
 
 | 항목 | 확정 규칙 | 관련 절 |
 |---|---|---|
-| 서비스 구성 | Spring 9개(gateway · user · store · product · order · payment · review · settlement · admin) + Keycloak | 2-1 · 3-2 |
-| admin-service | DB 없는 조합 계층 — 관리자 API 진입점, 각 서비스 `/internal/**`을 호출해 조합만 | 2-1 · 2-4 · 2-7 |
+| 서비스 구성 | Spring 10개(gateway · user · store · product · order · payment · review · settlement · admin · chat — chat 은 10/27 추가) + Keycloak | 2-1 · 3-2 |
+| admin-service | 조합 계층 — 관리자 API 진입점, 각 서비스 `/internal/**`을 호출해 조합. 자기 DB는 신고 · 조치 이력(admindb, ADR-0001 예외 10/26)만 · 실시간 알림 센터(10/27) | 2-1 · 2-4 · 2-7 |
 | 카테고리 · 수수료 | 카테고리는 product-service, 카테고리별 수수료는 settlement-service | 2-1 · 3-2 |
 | 대시보드 | 판매자는 store, 관리자는 admin 안에서 조합 — 병렬 호출 + 실패 영역만 빼고 부분 응답 | 2-7 |
 | 서비스 간 호출 | Resilience4j 표준 (타임아웃 · 서킷 브레이커 · 멱등 GET만 재시도 · 폴백) | 2-7 |
@@ -74,7 +74,7 @@
 - `main` — 보호 브랜치. 직접 push 금지, PR + 승인 1명 + CI 통과 후 Squash merge
 - 작업 브랜치: `feat/{도메인}-{작업}` (예: `feat/order-payment-verify`, `feat/infra-eks-cluster`)
 - 그 외: `fix/` · `refactor/` · `docs/` · `chore/`(빌드 · 설정)
-- 도메인 값: `auth` `user` `store` `product` `order` `payment` `review` `settlement` `admin` `gateway` `front`(프론트 공통) `infra`(Keycloak 설정 포함, 예: `feat/infra-keycloak-realm`) `cicd` `obs`(관측성) `sls`(서버리스)
+- 도메인 값: `auth` `user` `store` `product` `order` `payment` `review` `settlement` `admin` `chat`(10/27) `gateway` `front`(프론트 공통) `infra`(Keycloak 설정 포함, 예: `feat/infra-keycloak-realm`) `cicd` `obs`(관측성) `sls`(서버리스)
 
 ### 1-2. 커밋 메시지
 
@@ -121,7 +121,7 @@
 도메인형 구조. 최상위를 계층(controller/service …)으로 나누지 않습니다.
 
 ```
-com.sesac.gojigi.{service}            # service = gateway · user · store · product · order · payment · review · settlement · admin
+com.sesac.gojigi.{service}            # service = gateway · user · store · product · order · payment · review · settlement · admin · chat
 ├── {Service}Application.java
 ├── common                           # 이 서비스 안에서만 쓰는 공통 (응답 봉투 · 예외 · 인증은 libs/common-web — 아래)
 │   ├── config                       # @Configuration — Redis · RestClient · Resilience4j · QueryDSL · Scheduling(ShedLock) · WebMvc · Swagger · AWS
@@ -144,9 +144,9 @@ com.sesac.gojigi.{service}            # service = gateway · user · store · pr
 - 해당 도메인에 필요 없는 패키지는 만들지 않음 (예: `cart`는 `entity` 없음)
 - **공통 모듈 `libs/common-web`**(Gradle composite build) — 응답 봉투(`ApiResponse` · `PageResponse`) · 예외(`ErrorCode` · `CommonErrorCode` · `BusinessException` · `GlobalExceptionHandler`, 404 · 405 포함) · `@CurrentUser` · `AuthUser` · 로그 MDC `userId` 필터 · `/actuator` 트레이스 제외. 서비스마다 복사하지 않고 `com.sesac.gojigi.common.web.*`를 import. 서블릿 전용이라 gateway 제외, 9개 중 7개 적용(admin은 아직 미이관)
 - 도메인 에러 코드는 각 서비스 `{domain}/exception/{Domain}ErrorCode implements ErrorCode`
-- **DB가 없는 서비스 두 곳**
+- **DB가 없는(거의 없는) 서비스 두 곳**
   - gateway-service: `config` · `filter` · `exception`만
-  - admin-service: 도메인 패키지에 `controller` · `service` · `client` · `dto`만 — **`entity` · `repository` 없음**, 데이터는 각 서비스 `/internal/**` 호출로만 다룸
+  - admin-service: 도메인 패키지에 `controller` · `service` · `client` · `dto`만 — **`entity` · `repository` 없음**, 데이터는 각 서비스 `/internal/**` 호출로만 다룸. 예외는 `report`(신고 · 조치 이력 — admindb entity · repository · Flyway, ADR-0001 예외 10/26)뿐
 
 **서비스별 도메인**
 
@@ -160,7 +160,8 @@ com.sesac.gojigi.{service}            # service = gateway · user · store · pr
 | payment-service | paymentdb | `payment`(포트원 V2 검증 · 취소 · 웹훅) |
 | review-service | reviewdb | `review`(사진 · 별점 · 판매자 답글) · `inquiry`(상품문의 · 답변) · `eligibility`(리뷰 작성 자격) |
 | settlement-service | settlementdb | `settlement`(적재 · 집계 · 지급 · 보류) · `commission`(카테고리별 수수료) |
-| admin-service | 없음 | `application` · `store` · `category` · `settlement` · `user` · `dashboard` — 모두 `/internal/**` 호출 조합 |
+| admin-service | admindb(신고만) | `application` · `store` · `category` · `settlement` · `user` · `dashboard` · `review` — `/internal/**` 호출 조합, `report`(신고 · 조치 이력, 10/26) · `notification`(알림 센터, 10/27 예정) |
+| chat-service (10/27 예정) | chatdb | `room` · `message`(1:1 채팅 — 스토어 톡 · 판매자 운영 상담 · 고객센터 상담) · `config`(STOMP · Redis) |
 
 **도메인 경계 기준**
 
@@ -295,7 +296,7 @@ if (isAmountMismatch) {
 | 서비스 간 | `/internal/{자원}` | `POST /internal/stock/reservations` · `GET /internal/stats/orders` — 게이트웨이에 라우트 없음 |
 | 본인 | `/me` | `GET /api/users/me` |
 
-- **도메인 서비스는 `/api/admin/**`을 노출하지 않음.** 관리자 기능은 `/internal/**`로 열고 admin-service가 조합 (게이트웨이는 `/api/admin/**` 전부를 admin으로 라우팅)
+- **도메인 서비스는 `/api/admin/**`을 노출하지 않음.** 관리자 기능은 `/internal/**`로 열고 admin-service가 조합 (게이트웨이는 `/api/admin/**` 전부를 admin으로 라우팅). 관리자 상담함(채팅)은 예외로 `/api/chats/**`(chat-service)를 관리자 역할로 호출 — WebSocket 이라 admin 이 중계할 수 없음(10/27)
 - 브라우저는 payment-service를 직접 부르지 않음 — 결제 확인은 order(`POST /api/orders/{orderNo}/payment/confirm`) 경유 (포트원 웹훅 `/api/payments/webhook`만 예외)
 - 자원은 **복수형 명사 · kebab-case**, 행위는 HTTP 메서드
 - 상태 전이처럼 행위 중심 API는 동사 하위 경로 허용 (`/approve` · `/confirm` · `/ship` · `/api/auth/login`)
@@ -559,9 +560,9 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 - **단수형** (엔티티 클래스와 1:1): `store` · `product` · `order_item` · `settlement` — 예외 `orders` · `users`
 - 하위 · 매핑 테이블도 단수형: `product_option` · `review_image`
 - 모든 테이블에 `COMMENT` 필수
-- 서비스별 스키마 8개: `userdb` · `storedb` · `productdb` · `orderdb` · `paymentdb` · `reviewdb` · `settlementdb` · `keycloakdb`
+- 서비스별 스키마 10개: `userdb` · `storedb` · `productdb` · `orderdb` · `paymentdb` · `reviewdb` · `settlementdb` · `admindb`(10/26) · `chatdb`(10/27) · `keycloakdb`
 - `keycloakdb`는 Keycloak이 스스로 관리 — 이 문서의 DB 규칙 · Flyway 대상에서 제외, 직접 쿼리 · 수정 금지
-- gateway-service · admin-service는 스키마 없음
+- gateway-service는 스키마 없음 · admin-service는 admindb 에 신고 · 조치 이력만(ADR-0001 예외)
 
 **서비스별 테이블 이름**
 
@@ -780,7 +781,7 @@ gotgan-frontend/src/
 
 **운영 규칙**
 
-1. **관리자 화면은 `features/admin`에 둔다** (입점 심사 · 스토어 · 카테고리 · 수수료 · 정산 · 회원 · 관리자 대시보드). `/api/admin/**`(admin-service)만 호출, 도메인 서비스 API를 직접 부르지 않음 — 담당 구지훈
+1. **관리자 화면은 `features/admin`에 둔다** (입점 심사 · 스토어 · 카테고리 · 수수료 · 정산 · 회원 · 관리자 대시보드). `/api/admin/**`(admin-service)만 호출, 도메인 서비스 API를 직접 부르지 않음 — 담당 구지훈. 예외: 관리자 상담함은 `features/chat` 공용 화면이 `/api/chats/**`(chat-service) 호출(10/27)
 2. 다른 사람의 `features/` 폴더는 PR 없이 수정 금지
 3. 두 도메인 이상에서 쓰이면 `shared/`로 승격, 승격 시 팀 공지
 4. `features` 간 직접 import 지양 — 필요하면 `shared` 경유
@@ -1039,7 +1040,7 @@ function AdminStoreListPage() {
 - [ ] `@Transactional`이 서비스에만 있고, 원격 호출이 트랜잭션 밖에 있는가?
 - [ ] 다른 서비스 호출에 Resilience4j 표준(타임아웃 · 서킷 브레이커 · 멱등 GET만 재시도 · 폴백)이 적용되고 실패가 도메인 예외로 변환되는가?
 - [ ] 대시보드 조합이 병렬 호출이고, 한 서비스가 실패해도 `unavailable` 부분 응답(200)을 주는가? 연쇄 호출(2홉 이상)이 없는가?
-- [ ] admin-service에 entity · repository · DB 접근이 없고, 도메인 서비스에 `/api/admin/**`이 없는가?
+- [ ] admin-service에 entity · repository · DB 접근이 없고(예외 `report` — admindb), 도메인 서비스에 `/api/admin/**`이 없는가?
 - [ ] 동적 검색이 QueryDSL이고, `@Query` · 네이티브 쿼리에 문자열 이어 붙이기가 없는가?
 - [ ] 사용자 입력 HTML(리뷰 · 문의 · 입점 신청)을 저장 전에 Sanitizer로 정화하는가?
 - [ ] 소유권 검사(storeId · userId)가 있는가?
@@ -1062,7 +1063,7 @@ function AdminStoreListPage() {
 **프론트엔드**
 
 - [ ] 컴포넌트는 `.jsx`, 그 외는 `.js`인가? (TypeScript 파일이 섞이지 않았는가)
-- [ ] 페이지는 `pages/`, 로직은 `features/{도메인}`에 있는가? 관리자 화면은 `features/admin`에서 `/api/admin/**`만 호출하는가?
+- [ ] 페이지는 `pages/`, 로직은 `features/{도메인}`에 있는가? 관리자 화면은 `features/admin`에서 `/api/admin/**`만 호출하는가?(예외: 상담함 `features/chat`)
 - [ ] queryKey를 팩토리에서만 만들었는가?
 - [ ] 변경 후 관련 queryKey를 무효화하는가?
 - [ ] 서버 데이터를 Zustand에 복사하지 않았는가?

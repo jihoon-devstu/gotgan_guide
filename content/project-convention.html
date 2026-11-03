@@ -598,13 +598,13 @@ public abstract class BaseTimeEntity {
 <tr><td>서버 상태</td><td>TanStack Query v5</td><td>API 데이터는 전부 여기서 (4-6)</td></tr>
 <tr><td>클라이언트 상태</td><td>Zustand</td><td><code>authStore</code> — accessToken · user · isAuthReady / UI 상태</td></tr>
 <tr><td>표</td><td>TanStack Table v8</td><td>4-7</td></tr>
-<tr><td>폼</td><td>react-hook-form + zod</td><td>스키마는 <code>features/{domain}/schemas.js</code></td></tr>
+<tr><td>폼</td><td>컴포넌트 상태(<code>useState</code>) + zod</td><td>스키마는 <code>features/{domain}/schemas.js</code> — react-hook-form 은 쓰지 않음(11/3 현행화)</td></tr>
 <tr><td>HTTP</td><td>Axios</td><td><code>withCredentials: true</code> 고정 · 상대경로 <code>/api/...</code></td></tr>
 <tr><td>스타일</td><td>Tailwind CSS v4</td><td>디자인 토큰은 <code>styles/index.css</code>의 <code>@theme</code> (목업 토큰)</td></tr>
 <tr><td>UI 컴포넌트</td><td>목업 공통 컴포넌트</td><td><code>shared/components/ui/</code> — shadcn 등 새 UI 키트 도입 안 함</td></tr>
 <tr><td>차트 · 토스트</td><td>목업 SVG 차트 · 목업 ToastHost</td><td>새 라이브러리 도입 시 팀 합의</td></tr>
 <tr><td>결제</td><td><code>@portone/browser-sdk</code></td><td><code>features/payment</code>에서만 (<code>portone.js</code>)</td></tr>
-<tr><td>목킹</td><td>MSW</td><td><code>src/mocks/</code></td></tr>
+<tr><td>테스트 목킹</td><td><code>vi.spyOn(axiosInstance, …)</code></td><td>모든 화면이 실제 API 라 <code>src/mocks/</code> 는 11/3 삭제(frontend #80) — MSW 는 쓰지 않음</td></tr>
 <tr><td>테스트</td><td>Vitest + React Testing Library</td><td>대상: 유틸 · zod 스키마 · 핵심 훅</td></tr>
 </table></div>
 <h3 id="c4-2"><span class="n">4-2</span>프로젝트 구조</h3>
@@ -646,7 +646,6 @@ public abstract class BaseTimeEntity {
 │   ├── components/common/        #   PostcodeSearch(우편번호 검색) · ConfirmModal · EmptyState · SortableHeader
 │   ├── layouts/                  #   ShopLayout · MyPageLayout · ConsoleLayout
 │   ├── hooks/  stores/  utils/
-├── mocks/                        # MSW handlers · fixtures
 └── styles/index.css              # Tailwind 진입 · @theme 디자인 토큰</code></pre>
 <h4>운영 규칙</h4>
 <ol class="b"><li><b>관리자 화면은 <code>features/admin</code>에 둔다</b> (입점 심사 · 스토어 · 카테고리 · 수수료 · 정산 · 회원 · 관리자 대시보드). <code>/api/admin/**</code>(admin-service)만 호출, 도메인 서비스 API를 직접 부르지 않음 — 담당 구지훈. 예외: 관리자 상담함은 <code>features/chat</code> 공용 화면이 <code>/api/chats/**</code>(chat-service) 호출(10/27)</li><li>다른 사람의 <code>features/</code> 폴더는 PR 없이 수정 금지</li><li>두 도메인 이상에서 쓰이면 <code>shared/</code>로 승격, 승격 시 팀 공지</li><li><code>features</code> 간 직접 import 지양 — 필요하면 <code>shared</code> 경유</li><li><code>shared/components/ui/</code>(목업 컴포넌트)는 수정 전 팀 공지 — 모든 화면에 영향</li></ol>

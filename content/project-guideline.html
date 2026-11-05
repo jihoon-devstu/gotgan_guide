@@ -630,6 +630,15 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <tr><td>시스템 (aws-node, kube-proxy, coredns, EBS CSI, LBC, metrics-server)</td><td>약 14</td><td>약 1.2Gi</td><td>DaemonSet은 노드 수만큼 늘어남</td></tr>
 <tr><td><b>합계</b></td><td><b>약 36</b></td><td><b>약 10.3Gi</b></td><td>t3.xlarge × 2 할당 가능 약 30Gi → <b>requests 여유 약 19.7Gi, 실사용(약 12.5~13.5Gi) 기준 여유 약 16.5Gi</b>. 노드 1대만 남아도(약 15Gi) 실사용 수용. 시크릿은 K8s Secret(secrets-sync)이라 운영자 파드가 없음</td></tr>
 </table></div>
+<p class="cap">k6 측정(11/4 ~ 11/5) 뒤 확정한 값 — 노드는 그대로, 힙 상한과 CPU 예약을 조정</p>
+<div class="tbl"><table>
+<tr><th>항목</th><th>값</th><th>근거</th></tr>
+<tr><td>메모리 limit · requests</td><td>768Mi · 512Mi 유지</td><td>힙 + 힙 밖 + 스레드 · 네이티브(실측 약 180Mi)가 768Mi 안. requests 는 2차 측정 working set 으로 재확인</td></tr>
+<tr><td>힙 상한(Helm env)</td><td><b>33%(254Mi), admin 41%(316Mi)</b></td><td>라이브 데이터 52 ~ 138Mi × 2. 이미지 기본 75%(557Mi)에서는 admin 이 힙 305Mi 사용 중 커밋이 557Mi 로 커지며 OOMKilled → 조정 뒤 재시작 0</td></tr>
+<tr><td>CPU requests</td><td>gateway 200m · product 250m · order · review · store · chat 150m · 나머지 100m · Keycloak 500m</td><td>사용량 순 배분. 합계 3.58 vCPU(46%), <b>노드 1대 장애 시 3.40 / 3.92 vCPU 로 전부 수용(N-1)</b></td></tr>
+<tr><td>커넥션 풀 · MySQL</td><td>서비스 풀 10 유지 · Keycloak 풀 30 · <code>max_connections</code> 250</td><td>풀 대기 0. 상한 151 은 로그인 몰림 때 도달, 배포 중 최대 193</td></tr>
+<tr><td>노드 · HPA</td><td>app t3.xlarge × 2 · db t3.medium · HPA 없음</td><td>피크(동시 200명) CPU · 메모리 27%. CPU 가 먼저 무너진 서비스 없음</td></tr>
+</table></div>
 <p class="cap"><code>db</code> 노드 그룹(t3.medium × 1) — DB 티어 파드 예산</p>
 <div class="tbl"><table>
 <tr><th>항목</th><th>파드 수</th><th>메모리 requests</th><th>비고</th></tr>
@@ -3315,7 +3324,7 @@ ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]</code>
 <tr><th>설정</th><th>이유</th></tr>
 <tr><td>멀티 스테이지</td><td>최종 이미지에 JDK · Gradle · 소스가 없음 → 작고 안전</td></tr>
 <tr><td>레이어 분리 (<code>jarmode=tools extract --layers</code>)</td><td>코드만 바뀌면 의존성 레이어(수십 MB)는 캐시 재사용 → push · pull이 빠름</td></tr>
-<tr><td><code>MaxRAMPercentage=75</code></td><td>JVM이 컨테이너 메모리 제한(limits)을 기준으로 힙을 잡음 → OOMKilled 예방(19장)</td></tr>
+<tr><td><code>MaxRAMPercentage=75</code></td><td>이미지 기본값. JVM이 컨테이너 메모리 제한(limits)을 기준으로 힙을 잡음. <b>운영은 Helm env 로 33%(admin 41%)로 덮음</b> — limit 768Mi 에 75% 면 힙 밖까지 더해 OOMKilled(04장 · 19장)</td></tr>
 <tr><td><code>ExitOnOutOfMemoryError</code></td><td>OOM이면 어정쩡하게 살아 있지 않고 종료 → 쿠버네티스가 재시작(자동 복구)</td></tr>
 <tr><td>non-root 사용자</td><td>컨테이너 탈취 시 피해 축소</td></tr>
 <tr><td><code>.dockerignore</code></td><td><code>build/</code>, <code>.gradle/</code>, <code>.idea/</code>를 빌드 컨텍스트에서 제외</td></tr>
@@ -3454,6 +3463,8 @@ data:
 defaults:
   replicas: 1
   resources: { requests: { cpu: 100m, memory: 512Mi }, limits: { memory: 768Mi } }
+  env:   # 서비스별로 덮을 수 있음 (admin 41%)
+    - { name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=33 -XX:+ExitOnOutOfMemoryError" }
   terminationGracePeriodSeconds: 60
 
 services:
@@ -3530,6 +3541,7 @@ services:
 <tr><td><code>preStop</code> sleep 10s</td><td>종료 신호(SIGTERM) 전에 이 파드로 오는 새 요청이 끊기도록 대기</td></tr>
 <tr><td><code>server.shutdown: graceful</code> + <code>timeout-per-shutdown-phase: 30s</code></td><td>처리 중인 요청을 마치고 종료</td></tr>
 <tr><td><code>terminationGracePeriodSeconds: 60</code></td><td>preStop 10s + graceful 30s를 넉넉히 덮음 (넘으면 SIGKILL)</td></tr>
+<tr><td><code>env.JAVA_TOOL_OPTIONS</code></td><td>힙 상한을 이미지 재빌드 없이 서비스별로 지정. 이미지의 값을 통째로 덮으므로 <code>ExitOnOutOfMemoryError</code> 도 함께 적는다(04장)</td></tr>
 <tr><td><code>requests.memory: 512Mi</code> · <code>limits.memory: 768Mi</code></td><td>업무 서비스 9개 × 512Mi(10/27 chat 포함) + gateway × 2 + Keycloak 1Gi … app 노드 합계 약 10.3Gi(실사용 약 12.5~13.5Gi) → t3.xlarge × 2(할당 약 30Gi), MySQL · Redis는 db 노드 (04장)</td></tr>
 </table></div>
 <p class="cap">gotgan-config/deploy/k8s/keycloak/keycloak.yaml — Keycloak (클러스터 내부 전용)</p>
@@ -4013,7 +4025,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>파드 Pending</td><td><code>Too many pods</code>, <code>Insufficient memory</code></td><td>app t3.xlarge × 2(할당 약 30Gi · 파드 116 — 파드 약 35 · requests 약 9.8Gi, requests 여유 약 20Gi · 실사용 기준 여유 약 17Gi) + db t3.medium × 1, requests 현실화(512Mi), ArgoCD dex · notifications 0개, 시연 때만 app 노드 3대. MySQL · Redis가 Pending이면 db 노드의 테인트 · toleration · 2a 서브넷 확인</td></tr>
 <tr><td>db 노드 1대 · AZ 2a 고정</td><td>2a 장애 또는 db 노드 다운 시 MySQL · Redis 전부 불가 → 모든 서비스가 DB 오류(읽기 전용 화면만 부분 동작)</td><td><b>수용</b>(10/13 3차). EBS 볼륨(gp3 디스크)이 2a에 묶여 다른 AZ로 옮길 수 없음. 노드 그룹 max 1이라 자동 교체(관리형 노드 그룹 재생성)는 되지만 AZ 자체 장애는 못 막음. 멀티 AZ DB(RDS Multi-AZ)는 20장. 시연은 "서비스 하나 다운" · "Redis 다운"까지만, DB 다운은 시연하지 않음</td></tr>
 <tr><td>NetworkPolicy로 DB 접근 차단</td><td>파드가 MySQL · Redis에 연결 못 함(타임아웃), Keycloak 기동 실패</td><td>DB에 닿는 파드는 전부 라벨 <code>tier: backend</code>(Helm Deployment 기본 · Keycloak 포함) + 네임스페이스 sesac-gojigi. 라벨 빠진 파드는 <code>kubectl get pod -L tier</code>로 확인. 디버그용 <code>mysql</code> 클라이언트 파드도 같은 라벨을 붙여 띄움</td></tr>
-<tr><td>JVM OOMKilled</td><td>파드 재시작 반복, <code>OOMKilled</code></td><td><code>-XX:MaxRAMPercentage=75</code>, limits 768Mi, CPU limit은 두지 않거나 넉넉히(기동 시 스로틀링)</td></tr>
+<tr><td>JVM OOMKilled</td><td>파드 재시작 반복, <code>OOMKilled</code></td><td>힙 상한 33%(admin 41%, Helm env) · limits 768Mi — 힙 사용량이 아니라 <b>커밋이 상한까지 커질 때</b>를 기준으로 계산. CPU limit은 두지 않거나 넉넉히(기동 시 스로틀링)</td></tr>
 <tr><td>기동이 느려 probe 실패</td><td>CrashLoopBackOff (특히 Keycloak)</td><td>startupProbe(최대 2~3분) 분리, readiness/liveness와 구분, Keycloak은 메모리 1Gi</td></tr>
 <tr><td>서비스 10개 로컬 메모리</td><td>로컬에서 서비스 + Keycloak + MySQL을 다 띄우면 멈춤</td><td>자기 서비스 + 직접 의존 1~2개 + MySQL · Redis만, 나머지는 MSW 또는 dev 클러스터 port-forward, <code>.wslconfig</code> memory 8GiB+</td></tr>
 <tr><td>SonarQube Cloud 5만 줄 한도</td><td>분석 실패 · 플랜 한도 초과 안내</td><td>생성 코드 · 빌드 산출물은 <code>sonar.exclusions</code>, 넘으면 중단(바인딩 규칙 · gitleaks · sanitizer는 그대로 유지)</td></tr>

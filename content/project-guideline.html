@@ -177,7 +177,7 @@ svg .arrowhead2{fill:var(--accent)}
 <tr><td>CI/CD · 코드 품질</td><td><b>GitHub Actions + ArgoCD</b>(OIDC · 경로 필터 · GitOps), 프론트는 Vercel Git 연동. <b>SonarQube Cloud 무료 플랜</b>으로 main 대상 PR에 품질 게이트 · 코멘트. SQL Injection은 파라미터 바인딩, XSS는 HTML sanitizer. 시크릿은 <b>GitHub Secrets 단일 소스</b>(<code>secrets-sync</code> 워크플로가 K8s Secret 생성, Secrets Manager · KMS · ESO 없음). 인프라는 <b>매일 08:00 생성 · 22:00 삭제</b>(<code>infra-schedule</code> · <code>bootstrap</code> 워크플로, cluster/만 — 나머지는 상시).</td><td>12</td></tr>
 <tr><td>관측성 · 헬스 체크</td><td>PLG(Prometheus · Loki · Grafana) + Zipkin. <b>Grafana "System Status" 헬스 체크 대시보드</b>로 서비스별 초록/빨강 · 죽음 → 복구 · 롤링 배포를 시간축에 표시. 시연: 서비스 하나 다운 · 자동 복구 · 무중단 배포 · (가능하면) 롤백 · Saga 보상.</td><td>13</td></tr>
 <tr><td>백엔드 구조</td><td><b>저장소 3개</b>: <code>gotgan-backend</code>(<code>services/</code> 서비스별 독립 Gradle 프로젝트 · Dockerfile, <code>serverless/</code>, docker-compose) · <code>gotgan-frontend</code>(React 루트) · <code>gotgan-config</code>(<code>deploy/</code> k8s · Helm · ArgoCD · 관측성, <code>infra/terraform/</code>, <code>scripts/</code>, <code>docs/</code>). 백엔드 CI가 이미지 태그를 gotgan-config의 <code>values.yaml</code>에 커밋하고 ArgoCD는 gotgan-config를 감시. 서비스 내부는 컨벤션의 <code>controller/service/repository/entity/dto/exception/client</code> 구조.</td><td>15</td></tr>
-<tr><td>일정</td><td><b>2026-10-12 ~ 11-20</b>, 개발은 <b>11-13 기능 동결</b>, 마지막 주는 QA · 발표 준비, <b>11-20 발표</b>. <b>1~2주차 인프라</b>(구지훈이 AWS IaC를 완성해 넘기면 이경석 CI/CD · 박지연 로깅이 연계, 2주차 말 목업 서비스 1개로 걷는 뼈대) → <b>3~5주차 도메인 개발(프론트 포함)</b> → <b>6주차 QA · 발표</b>.</td><td>16</td></tr>
+<tr><td>일정</td><td><b>2026-10-12 ~ 11-20</b>, <b>11-05 기능 동결</b>(11/02 앞당김, 원래 11-13) · 11-06 QA · 2차 부하 측정 · 11-09 문서 · 11-10 ~ 발표 자료 · 리허설, <b>11-20 발표</b>. <b>1~2주차 인프라</b>(구지훈이 AWS IaC를 완성해 넘기면 이경석 CI/CD · 박지연 로깅이 연계, 2주차 말 목업 서비스 1개로 걷는 뼈대) → <b>3~5주차 도메인 개발(프론트 포함)</b> → <b>6주차 QA · 발표</b>.</td><td>16</td></tr>
 <tr><td>범위</td><td><b>Must</b>: 로그인 · 입점 · 카테고리 · 상품 · 검색(QueryDSL) · 장바구니 · 주문 · 결제 Saga · 배송 · <b>취소/반품/교환</b> · 구매확정 · <b>리뷰</b> · 정산 · 대시보드 · 헬스 체크 · 복원력 시연. <b>Should</b>: 포인트 · 회원등급 · 상품문의 · 알림/명세서 Lambda. <b>Won't</b>: 찜 · 쿠폰 · 비회원 구매 · 오토스케일링 · 파티셔닝 · CQRS/캐시 · Elasticsearch 등.</td><td>16</td></tr>
 </table></div>
 </section>
@@ -214,7 +214,7 @@ svg .arrowhead2{fill:var(--accent)}
 <div class="box rec"><b class="t">이 문서의 전제</b>
 <ol>
 <li><b>팀은 3명</b>입니다: 구지훈 · 이경석 · 박지연. 인프라 · 서비스 담당은 03장 표 그대로입니다.</li>
-<li><b>기간은 2026-10-12(월) ~ 11-20(금)</b>입니다. 개발은 11-13(금) 기능 동결까지, 11-16 ~ 11-20은 QA · 발표 준비, 11-20에 발표합니다(16장).</li>
+<li><b>기간은 2026-10-12(월) ~ 11-20(금)</b>입니다. 11-05(목) 기능 동결(11/02 앞당김, 원래 11-13), 11-06 QA · 2차 부하 측정, 11-09 문서 최신화, 11-10 ~ 발표 자료 · 리허설, 11-20에 발표합니다(16장).</li>
 <li><b>결제는 포트원(PortOne) V2 테스트 채널</b>로 실제 결제 흐름을 연동합니다. 사업자가 아니므로 테스트 상점 · 테스트 키만 씁니다(07장).</li>
 <li><b>택배사 연동은 하지 않습니다.</b> 판매자가 송장번호를 직접 입력하고, 배송완료는 판매자 버튼 또는 스케줄러로 status만 바꿉니다.</li>
 <li>AWS 계정 하나를 팀이 공유하고, 환경은 <b>dev 하나</b>입니다. <b>Vercel(프론트) + Route 53 도메인 · ACM 인증서(API, <code>api.gotgan.click</code>)</b>로 서빙합니다(05장, 10/20 DuckDNS에서 전환).</li>
@@ -1072,7 +1072,7 @@ spring:
 CREATE TABLE orders (
   order_id           BIGINT       NOT NULL AUTO_INCREMENT,
   buyer_id           BIGINT       NOT NULL COMMENT 'user-service users.user_id (논리 참조)',
-  order_no           VARCHAR(20)  NOT NULL COMMENT '외부 노출 주문번호 예: 20261021-000123',
+  order_no           VARCHAR(20)  NOT NULL COMMENT '외부 노출 주문번호 예: 20261021-000123 — 날짜별 채번 테이블 order_no_sequence 로 원자 발급(11/5, 동시 주문 충돌 수정)',
   orderer_name       VARCHAR(50)  NOT NULL COMMENT '주문 시점 스냅샷 — 알림 Lambda가 user-service를 부르지 않게',
   orderer_email      VARCHAR(100) NOT NULL COMMENT '주문 시점 스냅샷',
   receiver_name      VARCHAR(50)  NOT NULL COMMENT '수령인',
@@ -1921,7 +1921,8 @@ public class SecurityConfig {
                 .authorizeExchange(auth -&gt; auth
                         .pathMatchers("/api/auth/**").permitAll()                              // 가입 · 로그인 · refresh · 로그아웃
                         .pathMatchers(HttpMethod.POST, "/api/payments/webhook").permitAll()      // 포트원 웹훅 (서명은 payment가 검증)
-                        .pathMatchers("/actuator/health/**", "/actuator/prometheus").permitAll()
+                        .pathMatchers("/actuator/health/**").permitAll()
+                        .pathMatchers("/actuator/prometheus").access(metricsAccessManager)   // 클러스터 노드 대역만(11/3)
                         .pathMatchers(HttpMethod.GET,
                                 "/api/products/**", "/api/categories/**", "/api/stores/**",
                                 "/api/reviews/**", "/api/inquiries/**").permitAll()
@@ -2199,7 +2200,8 @@ DynamoDB는 "접근 패턴을 먼저 정하고 키를 설계"합니다(Single Ta
 <tr><td><code>OrderItemConfirmed</code></td><td>order</td><td>settlement · review · user</td><td>정산 대상 적재 / <b>리뷰 작성 자격 저장</b> / 누적 구매확정 금액 → <b>회원등급 갱신</b></td></tr>
 <tr><td><code>OrderItemCancelled</code></td><td>order</td><td>알림 Lambda · admin(알림 센터)</td><td>취소 완료 메일 / 알림함</td></tr>
 <tr><td><code>OrderItemReturned</code></td><td>order</td><td>알림 Lambda · admin(알림 센터)</td><td>반품 완료 메일 / 알림함</td></tr>
-<tr><td><code>SettlementPaid</code></td><td>settlement</td><td>정산 명세서 Lambda · admin(알림 센터)</td><td>명세서 CSV → S3 → 판매자 메일 / 알림함</td></tr>
+<tr><td><code>OrderClaimRequested</code></td><td>order</td><td>admin(알림 센터)</td><td>취소 · 반품 · 교환 요청을 판매자에게 <code>CLAIM_REQUESTED</code> 화면 알림(11/5)</td></tr>
+<tr><td><code>SettlementPaid</code></td><td>settlement</td><td>정산 명세서 Lambda · admin(알림 센터)</td><td>명세서 CSV → S3 → 판매자 메일 / 알림함. 항목이 200KB 를 넘으면 <code>itemsGzip</code>(gzip + Base64)으로 보냄 — SNS 한도 256KB(11/5)</td></tr>
 </table></div>
 <p>리뷰 작성 자격을 이벤트로 받는 이유: 리뷰를 쓸 때마다 order에 "이 사람이 구매확정했나"를 동기로 물으면 order가 죽었을 때 리뷰도 못 씁니다. review가 <code>OrderItemConfirmed</code>를 받아 자기 DB(<code>review_eligibility</code>)에 저장하면 order 장애와 무관하게 리뷰를 쓸 수 있습니다.</p>
 <p>취소 · 반품 시 포인트 환원 · 회수는 이벤트가 아니라 취소 · 반품 Saga의 동기 단계(order → payment → product → user)입니다(06장). 이벤트는 완료 후 알림에만 씁니다.</p>
@@ -2235,7 +2237,7 @@ DynamoDB는 "접근 패턴을 먼저 정하고 키를 설계"합니다(Single Ta
 <tr><td><code>sesac-gojigi-settlement-order-events</code></td><td>OrderItemConfirmed</td></tr>
 <tr><td><code>sesac-gojigi-review-order-events</code></td><td>OrderItemConfirmed (리뷰 작성 자격)</td></tr>
 <tr><td><code>sesac-gojigi-notification-order-events</code></td><td>OrderPaid · OrderItemShipped · OrderItemCancelled · OrderItemReturned</td></tr>
-<tr><td><code>sesac-gojigi-admin-order-events</code></td><td>위와 같은 4종 (알림 센터, 10/27)</td></tr>
+<tr><td><code>sesac-gojigi-admin-order-events</code></td><td>위 4종 (알림 센터, 10/27) + OrderClaimRequested (11/5)</td></tr>
 <tr><td rowspan="2"><code>sesac-gojigi-settlement-events</code></td><td><code>sesac-gojigi-report-settlement-events</code></td><td>SettlementPaid</td></tr>
 <tr><td><code>sesac-gojigi-admin-settlement-events</code></td><td>SettlementPaid (알림 센터, 10/27)</td></tr>
 </table></div>
@@ -2261,10 +2263,10 @@ DynamoDB는 "접근 패턴을 먼저 정하고 키를 설계"합니다(Single Ta
 <h3>스프링 스케줄러를 쓸 곳</h3>
 <div class="tbl"><table>
 <tr><th>작업</th><th>서비스</th><th>주기 (운영 / 데모)</th><th>우선순위 · 비고</th></tr>
-<tr><td><b>자동 구매확정</b>: 배송완료 + 7일 → CONFIRMED + <code>OrderItemConfirmed</code></td><td>order</td><td>매일 00:10 / 1분마다 + "2분 후 확정"</td><td><span class="tag must">Must</span> 정산 · 리뷰 · 등급의 입구</td></tr>
-<tr><td><b>배송완료 처리(택배 연동 대체)</b>: 배송중 + N시간 → 배송완료</td><td>order</td><td>1시간 / 1분</td><td><span class="tag must">Must</span> 택배사 연동은 하지 않으므로 흉내. 판매자 "배송완료" 버튼과 병행</td></tr>
+<tr><td><b>자동 구매확정</b>: 배송완료 + 7일 → CONFIRMED + <code>OrderItemConfirmed</code></td><td>order</td><td>1분 주기 — 배송완료 후 7일 / 데모 1시간(11/3)</td><td><span class="tag must">Must</span> 정산 · 리뷰 · 등급의 입구</td></tr>
+<tr><td><b>배송완료 처리(택배 연동 대체)</b>: 배송중 + N시간 → 배송완료</td><td>order</td><td>1분 주기 — 발송 후 1시간 / 데모 10분(11/3)</td><td><span class="tag must">Must</span> 택배사 연동은 하지 않으므로 흉내. 판매자 "배송완료" 버튼과 병행</td></tr>
 <tr><td><b>주간 정산 집계</b>: 지난주 월~일 구매확정분 → 스토어별 정산서</td><td>settlement</td><td>매주 월 03:00</td><td><span class="tag must">Must</span> 관리자 "지금 집계" 버튼(API)도 반드시 같이</td></tr>
-<tr><td><b>결제 대기 만료</b>: <code>PENDING</code> 15분 경과 주문 → payment <code>/internal</code>로 포트원 결제 상태 조회 → 결제됐으면 확정, 아니면 보상(결제 취소 · 재고 해제 · 사용 포인트 환원 → <code>FAILED</code>)</td><td>order (→ payment · product · user)</td><td>1분 / 1분(기준 1분)</td><td><span class="tag must">Must</span> 재고 · 포인트가 "결제 안 한 주문"에 묶이지 않게</td></tr>
+<tr><td><b>결제 대기 만료</b>: <code>PENDING</code> 15분 경과 주문 → payment <code>/internal</code>로 포트원 결제 상태 조회 → 결제됐으면 확정, 아니면 보상(결제 취소 · 재고 해제 · 사용 포인트 환원 → <code>FAILED</code>)</td><td>order (→ payment · product · user)</td><td>20초 간격(11/5, 끝난 뒤부터 셈 — 분당 약 150건 계산값) · 기준 15분</td><td><span class="tag must">Must</span> 재고 · 포인트가 "결제 안 한 주문"에 묶이지 않게</td></tr>
 <tr><td>멈춘 Saga 복구: 일정 시간 진행 없는 <code>saga_instance</code> → 다음 단계 재시도 또는 보상</td><td>order</td><td>1분</td><td><span class="tag must">Must</span> 06장</td></tr>
 <tr><td>보완요청 7일 경과 → 자동 반려</td><td>store</td><td>매일</td><td><span class="tag should">Should</span></td></tr>
 <tr><td>Outbox 릴레이</td><td>order · settlement</td><td>2초</td><td><span class="tag could">Could</span> Outbox를 쓸 때만</td></tr>
@@ -3074,7 +3076,7 @@ gotgan-config/                              sesac-final-1/gotgan-config — Argo
 <tr><th>폴더</th><th>결과물</th><th>실행 주체 · 도구</th><th>빈도</th></tr>
 <tr><td>config <code>infra/terraform/cluster/</code></td><td>EKS · 노드 · 애드온</td><td><b><code>infra-schedule</code> 워크플로</b>(OIDC 역할) — 수동은 구지훈</td><td><b>매일 08:00 apply · 22:00 destroy</b></td></tr>
 <tr><td>config <code>infra/terraform/</code> 나머지(global · vpc · ecr · app · cicd)</td><td>상시 AWS 자원</td><td>구지훈 · <code>terraform apply</code>(<code>cicd/</code>는 이경석) (다른 사람은 plan까지, <code>infra.yml</code>이 PR에 plan 코멘트)</td><td>처음 + 변경 시</td></tr>
-<tr><td>config <code>deploy/k8s/</code> (namespace · configmap · networkpolicy · db · keycloak)</td><td>네임스페이스 · 설정 · NetworkPolicy(DB 티어) · MySQL · Redis · Keycloak · realm <code>gotgan</code></td><td><b><code>bootstrap</code> 워크플로</b> · <code>kubectl apply</code> (파일 작성: 구지훈, keycloak은 이경석)</td><td>매일 아침 + 변경 시 수동 apply</td></tr>
+<tr><td>config <code>deploy/k8s/</code> (namespace · configmap · networkpolicy · db · keycloak)</td><td>네임스페이스 · 설정 · NetworkPolicy(DB · 업무 티어) · MySQL · Redis · Keycloak · realm <code>gotgan</code></td><td><b><code>bootstrap</code> 워크플로</b> · <code>kubectl apply</code> (파일 작성: 구지훈, keycloak은 이경석)</td><td>매일 아침 + 변경 시 수동 apply</td></tr>
 <tr><td>(파일 없음) K8s Secret</td><td><code>mysql-secret</code> · <code>{service}-secret</code> · <code>keycloak-secret</code> · <code>grafana-secret</code> · <code>alert-webhook-secret</code></td><td><b><code>secrets-sync</code> 워크플로</b> — GitHub Secrets → <code>kubectl create secret</code> (구지훈 관리, 12장)</td><td>매일 아침(bootstrap이 호출) + 값 변경 시 수동 실행</td></tr>
 <tr><td>config <code>deploy/observability/</code></td><td>Prometheus · Loki · Zipkin · Grafana · System Status 대시보드</td><td><code>bootstrap</code> 워크플로 · <code>kubectl apply</code> / Helm (파일 작성: 박지연)</td><td>매일 아침 + 대시보드 변경 시</td></tr>
 <tr><td>backend <code>services/*</code></td><td>컨테이너 이미지 → ECR</td><td>GitHub Actions (<code>backend.yml</code>, 이경석 관리)</td><td>PR(테스트 · SonarQube 품질 게이트) · main(빌드 · 푸시 · config 태그 커밋)</td></tr>
@@ -3600,7 +3602,7 @@ spec:
 <tr><th>파일</th><th>역할</th><th>적용</th></tr>
 <tr><td><code>k8s/00-namespace.yaml</code></td><td>sesac-gojigi 네임스페이스</td><td>kubectl 1회</td></tr>
 <tr><td><code>k8s/01-configmap.yaml</code></td><td>서비스 주소 8개 · <code>KEYCLOAK_URI</code> · 공통 설정</td><td>kubectl, 바꾼 뒤 <code>rollout restart</code></td></tr>
-<tr><td><code>k8s/02-networkpolicy.yaml</code></td><td>NetworkPolicy 2개 — <code>db-ingress-from-backend</code>(<code>tier=db</code> 파드의 3306 · 6379는 네임스페이스 sesac-gojigi의 <code>tier=backend</code> 파드만) · <code>db-egress-deny-except-dns</code>(DB 파드는 kube-dns 53 외 egress 없음 → NAT 경로 없음). 3티어 경계(04장)</td><td>bootstrap(configmap 직후)</td></tr>
+<tr><td><code>k8s/02-networkpolicy.yaml</code></td><td>NetworkPolicy 4개 — <code>db-ingress-from-backend</code>(<code>tier=db</code> 파드의 3306 · 6379는 네임스페이스 sesac-gojigi의 <code>tier=backend</code> 파드만) · <code>db-egress-deny-except-dns</code>(DB 파드는 kube-dns 53 외 egress 없음 → NAT 경로 없음) · <code>backend-ingress-from-backend-monitoring</code>(<code>tier=backend</code> 는 같은 티어 · monitoring 에서만, 11/5) · <code>gateway-ingress-from-nlb</code>(gateway 8080 은 어디서나). 3티어 경계(04장)</td><td>bootstrap(configmap 직후)</td></tr>
 <tr><td>(파일 없음) <code>mysql-secret</code> · <code>{service}-secret</code> · <code>keycloak-secret</code> · <code>grafana-secret</code> · <code>alert-webhook-secret</code></td><td>GitHub Secrets를 <code>secrets-sync</code> 워크플로가 <code>kubectl create secret generic</code>으로 생성(12장). 저장소에 Secret YAML은 두지 않음</td><td>bootstrap이 매일 호출 · 값 변경 시 수동 실행 + <code>rollout restart</code></td></tr>
 <tr><td><code>k8s/db/</code></td><td>StorageClass(gp3) · MySQL StatefulSet + <code>init-schemas.sh</code>(스키마 10개 · 서비스별 계정 — chatdb 10/27) · <code>redis.yaml</code>(StatefulSet + Service, <b>AOF <code>appendonly yes</code> + PVC <code>ebs-sc</code> 1Gi</b> — 파드 재시작에도 장바구니 캐시 유지, 09장). 둘 다 <b><code>nodeSelector: tier: db</code> + <code>tolerations</code>(<code>tier=db:NoSchedule</code>) + 파드 라벨 <code>tier: db</code></b> → db 노드(t3.medium, 2a)에만 뜨고 NetworkPolicy 대상이 됨</td><td>bootstrap(매일 아침)</td></tr>
 <tr><td><code>k8s/keycloak/</code></td><td><code>realm-gotgan.json</code>(역할 3종 · <code>gotgan-backend</code> 클라이언트 · 매퍼 · 토큰 수명 · 시드 계정, client secret은 <code>${GOTGAN_BACKEND_CLIENT_SECRET}</code> 자리표시자) · Deployment · ClusterIP Service</td><td>bootstrap(매일 아침) (파일 담당 이경석)</td></tr>
@@ -3740,7 +3742,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <!-- ============================================================ 13 -->
 <section id="s13">
 <h2><span class="n">16</span>일정 · MVP 범위 (10/12 ~ 11/20)</h2>
-<p class="lead">기간은 <b>2026-10-12(월) ~ 11-20(금)</b>입니다. 개발은 <b>11-13(금) 기능 동결</b>까지, 11-16 ~ 11-20은 QA · 발표 준비, <b>11-20 발표</b>입니다. 목표는 기능 수가 아니라 <b>완성도 높은 핵심 화면</b>과 <b>장애 격리 · 무중단 배포 · 자동 복구 시연</b>입니다.</p>
+<p class="lead">기간은 <b>2026-10-12(월) ~ 11-20(금)</b>입니다. <b>11-05(목) 기능 동결</b>(11/02 앞당김, 원래 11-13), 11-06 QA · 2차 부하 측정, 11-09 문서 최신화, 11-10 ~ 발표 자료 · 리허설, <b>11-20 발표</b>입니다. 이 장의 주차 표는 처음 계획이며 기록으로 둡니다. 목표는 기능 수가 아니라 <b>완성도 높은 핵심 화면</b>과 <b>장애 격리 · 무중단 배포 · 자동 복구 시연</b>입니다.</p>
 
 <h3>범위 (MoSCoW)</h3>
 <div class="tbl"><table>
@@ -3956,7 +3958,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>포인트: 실결제금액의 <b>5% 적립</b> + 다음 결제에서 사용, 상품주문 단위로 비율 배분 기록</td><td>부분 취소 · 반품 시 환원 · 회수를 정확히</td></tr>
 <tr><td>인프라</td><td>EKS 워커 <b>t3.large × 2 유지</b>(max 3, 시연 때 3대) → <b>10/14 t3.xlarge × 2로 조정</b>(아래 "10/14 사이징 조정")</td><td>멘토 "large도 크다"는 5개 기준. 9개 + Keycloak은 "서비스 수 × 기본 자원" 산수로 설명</td></tr>
 <tr><td>담당</td><td>구지훈(AWS IaC · settlement · admin · payment · 알림 메일 · 정산 명세서) · 이경석(CI/CD · Keycloak · user · gateway 인증 · order · review) · 박지연(관측성 · 헬스 체크 · product · store · 로그 아카이브) — 10/15 3인 체제로 재배치(아래 "10/15 팀 3인 체제 전환")</td><td>멘토: IaC는 한 사람이 끝까지 만들어 공유, 업무와 발표는 공평하게 · 각자 오너십</td></tr>
-<tr><td rowspan="2">일정 · 운영</td><td>10/12 ~ 11/20, <b>11/13 기능 동결</b>, 마지막 주 QA · 발표 준비, 11/20 발표</td><td>날짜는 변동 가능, 변경 시 이 표에 기록</td></tr>
+<tr><td rowspan="2">일정 · 운영</td><td>10/12 ~ 11/20, <b>11/5 기능 동결</b>(11/02 변경, 원래 11/13), 11/6 QA · 2차 부하 측정, 11/9 문서, 11/10 ~ 발표 자료, 11/20 발표</td><td>남은 기간을 발표 자료에 쓰려고 앞당김</td></tr>
 <tr><td>1~3일 스프린트 · 금요일 중간 점검 · 초반 데일리 스크럼 · QA 자동화 + 마지막 주 전체 QA · Claude 프로젝트에 가이드라인 · 컨벤션 컨텍스트</td><td>멘토: 기간이 짧아 2주 스프린트 불필요</td></tr>
 </table></div>
 
@@ -3975,7 +3977,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><th>#</th><th>결정</th><th>이유 · 근거</th></tr>
 <tr><td>1</td><td><b>3티어 구조로 명시</b>: 프론트 티어(Vercel) → 백 티어(EKS <code>app</code> 노드 그룹) → DB 티어(EKS <code>db</code> 노드 그룹). Vercel → 서비스 직접 경로 · 사용자 → DB 직접 경로 없음. 02장 · 04장 도면과 본문을 티어 기준으로 다시 그림</td><td>"어디가 프론트 · 백 · DB인가"를 도면 한 장에서 답할 수 있어야 함. 네트워크 경계가 티어와 일치해야 설명이 쉬움</td></tr>
 <tr><td>2</td><td><b>db 노드 그룹 분리</b>: <code>db</code> = t3.medium × 1(min 0 · max 1, 프라이빗 2a, 라벨 + 테인트 <code>tier=db:NoSchedule</code>) — MySQL · Redis만. <code>app</code> = t3.large × 2(min 0 · max 3, 2a · 2c, 라벨 <code>tier=app</code>) — 10/14 t3.xlarge × 2로 조정. Helm Deployment에 <code>nodeSelector: tier: app</code> + 파드 라벨 <code>tier: backend</code>, MySQL · Redis 매니페스트에 <code>nodeSelector: tier: db</code> + toleration. EBS gp3 PVC가 2a에 묶이므로 db 노드도 2a 고정. 비용 약 $31 추가(6주 합계 약 $320)</td><td>DB를 JVM 파드와 같은 노드에서 메모리 경쟁시키지 않음, 티어 경계를 노드 단위로도 보이게. 파드 예산: app 약 35파드 · 9.8Gi(여유 약 4Gi), db 약 1.7Gi</td></tr>
-<tr><td>3</td><td><b>NetworkPolicy</b> <code>deploy/k8s/02-networkpolicy.yaml</code>: DB 티어 파드(3306 · 6379) ingress는 네임스페이스 sesac-gojigi의 <code>tier=backend</code> 파드만, DB 파드 egress는 DNS 외 없음(NAT 경로 없음). bootstrap이 configmap 직후 적용</td><td>"DB는 백 티어에서만" 을 문서가 아니라 클러스터가 강제. 20장에 있던 NetworkPolicy를 DB 티어에 한해 채택</td></tr>
+<tr><td>3</td><td><b>NetworkPolicy</b> <code>deploy/k8s/02-networkpolicy.yaml</code>: DB 티어 파드(3306 · 6379) ingress는 네임스페이스 sesac-gojigi의 <code>tier=backend</code> 파드만, DB 파드 egress는 DNS 외 없음(NAT 경로 없음). <b>11/5 업무 티어 추가</b> — <code>tier=backend</code> 는 같은 티어 · monitoring 에서만, gateway 8080 만 개방(다른 네임스페이스 차단 실측, 같은 티어끼리는 호출 가능). bootstrap이 configmap 직후 적용</td><td>"DB는 백 티어에서만" 을 문서가 아니라 클러스터가 강제. 20장에 있던 NetworkPolicy를 DB 티어에 한해 채택</td></tr>
 <tr><td>4</td><td><b>blackbox exporter 삭제</b>: 관측성 파드는 Prometheus · Loki · Zipkin · Grafana · kube-state-metrics 5개. System Status의 "외부 체크(<code>probe_success</code>)" 패널은 gateway <code>up</code> Stat으로 대체</td><td>gateway 파드 2개의 <code>up</code> · Ready로 입구 생존을 충분히 보여줌. 파드 · 설정 하나 줄임</td></tr>
 <tr><td>5</td><td><b>presigned URL 예외 명시</b>: 프론트가 백 티어를 거치지 않는 유일한 경로는 파일 업로드 — 백엔드(product · store · review)가 presigned URL 발급 → 브라우저가 S3에 직접 PUT. 도면에 "유일한 예외"로 표기</td><td>3티어 원칙의 예외를 숨기지 않고 도면 · 본문에서 설명</td></tr>
 <tr><td>6</td><td><b>EBS 표기 통일</b>: "EBS 볼륨(gp3 디스크)" — ElastiCache와 혼동 금지. <b>도면은 AWS 공식 아키텍처 아이콘</b>(2026-07 패키지)을 인라인 symbol로 사용, README · 문서 사이트에서 같은 파일</td><td>발표 · 리뷰에서 EBS를 관리형 Redis로 오해한 사례. 아이콘 통일로 도면 가독성</td></tr>
@@ -4013,7 +4015,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <h2><span class="n">19</span>위험 요소 · 자주 막히는 곳</h2>
 <div class="tbl"><table>
 <tr><th>위험</th><th>증상</th><th>예방 · 대응</th></tr>
-<tr><td>범위 과다</td><td>발표 때 빈 화면 · 끊긴 흐름</td><td>16장 Must 화면부터 끝까지 연결, 덜 된 화면은 메뉴에서 숨김, 11/13 이후 새 기능 금지</td></tr>
+<tr><td>범위 과다</td><td>발표 때 빈 화면 · 끊긴 흐름</td><td>16장 Must 화면부터 끝까지 연결, 덜 된 화면은 메뉴에서 숨김, 11/5 이후 새 기능 금지</td></tr>
 <tr><td>구지훈 인프라 병목</td><td>인프라를 기다리느라 다른 사람이 멈춤, settlement · admin 일정까지 밀림</td><td>1주차 산출물 목록 · 날짜를 미리 공유, 기다리는 동안은 docker compose + MSW로 개발, 인프라 요청은 이슈로, settlement · admin은 3주차부터 본격 시작(인프라 기간에는 골격 · 계약만)</td></tr>
 <tr><td>이경석 업무 집중(CI/CD · Keycloak · user · gateway + order · review)</td><td>인증 · 배포 파이프라인과 구매 흐름이 한 사람에게 몰려 order Saga · 리뷰가 늦어짐</td><td>우선순위 고정(user · gateway 인증 → order Saga → review → 상품문의(Should)), 구매 흐름 PR 공동 리뷰어 = 구지훈(order Saga · payment 계약 먼저 확정), 연동 지점 공동 리뷰(재고 = 박지연), 범위 조정은 MoSCoW(Could 먼저 제외), 1주차에 서비스 템플릿 · Saga 골격 선행</td></tr>
 <tr><td>payment 분리로 Saga 단계 증가</td><td>중간 단계 실패 · 타임아웃 후 재고 · 포인트가 묶인 채 남음</td><td><code>saga_instance</code>에 단계 기록, sagaId 멱등, 역순 보상, 멈춘 Saga 복구 스케줄러, Resilience4j 타임아웃 → "결과 모름"은 조회 후 결정 (06장)</td></tr>
@@ -4027,6 +4029,9 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>NetworkPolicy로 DB 접근 차단</td><td>파드가 MySQL · Redis에 연결 못 함(타임아웃), Keycloak 기동 실패</td><td>DB에 닿는 파드는 전부 라벨 <code>tier: backend</code>(Helm Deployment 기본 · Keycloak 포함) + 네임스페이스 sesac-gojigi. 라벨 빠진 파드는 <code>kubectl get pod -L tier</code>로 확인. 디버그용 <code>mysql</code> 클라이언트 파드도 같은 라벨을 붙여 띄움</td></tr>
 <tr><td>JVM OOMKilled</td><td>파드 재시작 반복, <code>OOMKilled</code></td><td>힙 상한 33%(admin 41%, Helm env) · limits 768Mi — 힙 사용량이 아니라 <b>커밋이 상한까지 커질 때</b>를 기준으로 계산. CPU limit은 두지 않거나 넉넉히(기동 시 스로틀링)</td></tr>
 <tr><td>기동이 느려 probe 실패</td><td>CrashLoopBackOff (특히 Keycloak)</td><td>startupProbe(최대 2~3분) 분리, readiness/liveness와 구분, Keycloak은 메모리 1Gi</td></tr>
+<tr><td>WebSocket 메시지가 알림 풀에서 처리됨</td><td>채팅 왕복 지연 · 대기열 가득 참, DB · 풀은 여유. 스레드 덤프에 <code>clientInboundChannel</code> 스레드 없음</td><td>Boot 는 <code>AsyncTaskExecutor</code> 빈이 하나뿐이면 WebSocket 채널에 씌움 → 알림용 풀은 <code>@Bean(defaultCandidate = false)</code> + <code>@Qualifier</code>(11/5, 500 연결 p95 2,964 → 85ms)</td></tr>
+<tr><td>큰 이벤트 저장 · 발행 실패</td><td>한 스토어 주 약 300건부터 정산 지급 500</td><td>아웃박스 <code>payload</code> TEXT 64KB → MEDIUMTEXT, SNS 256KB 는 항목 압축(<code>itemsGzip</code>) · Lambda 가 풀어서 사용(11/5)</td></tr>
+<tr><td>동시 요청이 번호 · 유니크 키에서 충돌</td><td>재고는 맞는데 주문 500 · 같은 방 처음 열기 500</td><td>"최댓값 + 1" 금지 → 원자 채번(<code>order_no_sequence</code>). 동시 생성 충돌은 있는 행을 돌려주거나 409(11/5)</td></tr>
 <tr><td>서비스 10개 로컬 메모리</td><td>로컬에서 서비스 + Keycloak + MySQL을 다 띄우면 멈춤</td><td>자기 서비스 + 직접 의존 1~2개 + MySQL · Redis만, 나머지는 MSW 또는 dev 클러스터 port-forward, <code>.wslconfig</code> memory 8GiB+</td></tr>
 <tr><td>SonarQube Cloud 5만 줄 한도</td><td>분석 실패 · 플랜 한도 초과 안내</td><td>생성 코드 · 빌드 산출물은 <code>sonar.exclusions</code>, 넘으면 중단(바인딩 규칙 · gitleaks · sanitizer는 그대로 유지)</td></tr>
 <tr><td>옛 블로그 코드</td><td>Boot 2/3 · Keycloak 구버전 예제가 동작 안 함</td><td>17장 Boot 4 변경점, 공식 문서 우선 (Keycloak Admin API 경로 · 어댑터 폐지 주의)</td></tr>
@@ -4065,7 +4070,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>결제 장애 시 "열어주기"</td><td>비즈니스 판단 영역</td><td>결제 시스템 장애 때 서비스를 막지 않고 일단 통과(무료 처리)시켜 사용자를 잡기도 함 — 무중단이 비즈니스에서 얼마나 중요한지 보여주는 사례</td></tr>
 <tr><td>GraphQL · 전용 BFF 서비스</td><td>admin · 대시보드 조합 모듈로 충분</td><td>화면 종류가 많으면 프론트별 전용 API 계층을 따로 운영</td></tr>
 <tr><td rowspan="3">트래픽 · 네트워크</td><td>서비스 메시(Istio, Linkerd)</td><td>사이드카 자원, 복잡도 (Resilience4j로 대체)</td><td>서비스 간 mTLS, 재시도 · 서킷 브레이커 · 트래픽 분할을 코드 밖에서</td></tr>
-<tr><td>NetworkPolicy (업무 서비스까지)</td><td>DB 티어에는 적용함(04장 — 3306 · 6379는 백 티어만, DB egress 없음). 업무 서비스 간 정책은 여유 시</td><td>업무 서비스는 게이트웨이에서 오는 트래픽만 허용 → 헤더 신뢰 전제를 네트워크로 보장. 네임스페이스 기본 deny + 서비스별 allow</td></tr>
+<tr><td>NetworkPolicy (서비스 간 경로까지)</td><td>DB 티어 · 업무 티어 경계는 적용함(04장, 11/5 — 다른 네임스페이스 차단). 같은 티어끼리의 경로는 아직 열려 있음</td><td>서비스별 allow 로 "gateway 만 이 서비스를 부른다" 같은 경로까지 네트워크로 보장</td></tr>
 <tr><td>WAF</td><td>Route 53 + ACM은 10/20부터 범위 안(05장). NLB(L4)에는 WAF를 붙일 수 없음</td><td>CloudFront/ALB 앞단 웹 방화벽(봇 · SQL 인젝션 차단)</td></tr>
 <tr><td rowspan="3">확장 · 배포</td><td><b>HPA 오토스케일</b> / KEDA / Karpenter</td><td>예매 · 경매처럼 <b>동시성이 폭주하는 도메인이 아님</b>, 노드 고정 → 오토스케일 시연 제외</td><td>조회(R) API 부하 시 CPU · 큐 길이 기반 파드 자동 확장, 필요한 만큼 노드를 빠르게 추가(Spot 혼합)</td></tr>
 <tr><td>Argo Rollouts (카나리 · 블루그린)</td><td>사용자 없음 (롤링 무중단 배포로 시연)</td><td>새 버전에 트래픽 5%만 보내고 지표가 나쁘면 자동 롤백</td></tr>
@@ -4125,7 +4130,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>Access Entry</td><td>IAM 사용자 · 역할에 EKS 클러스터 접근 권한을 주는 EKS API 방식</td></tr>
 <tr><td>3티어</td><td>프론트 티어(Vercel) → 백 티어(EKS <code>app</code> 노드: gateway · 업무 서비스 · Keycloak · 관측성 · ArgoCD) → DB 티어(EKS <code>db</code> 노드: MySQL · Redis). 요청은 항상 앞 티어에서 다음 티어로만, 건너뛰는 경로는 presigned URL 업로드뿐</td></tr>
 <tr><td>노드 그룹 · 테인트(taint)</td><td>노드 그룹 = 같은 사양 · 라벨의 워커 노드 묶음(<code>app</code> · <code>db</code>). 테인트는 "이 노드에는 허용(toleration)된 파드만 와라"는 표시 — <code>db</code> 노드의 <code>tier=db:NoSchedule</code>로 MySQL · Redis 외 파드를 막음. 파드 쪽 <code>nodeSelector</code>는 반대로 "이 라벨의 노드로만 가라"</td></tr>
-<tr><td>NetworkPolicy</td><td>파드 단위 방화벽. 라벨 · 네임스페이스 · 포트로 ingress/egress를 허용. 이 프로젝트는 DB 티어 파드의 3306 · 6379를 <code>tier=backend</code> 파드만 열고 DB 파드의 egress는 DNS만 허용(<code>02-networkpolicy.yaml</code>)</td></tr>
+<tr><td>NetworkPolicy</td><td>파드 단위 방화벽. 라벨 · 네임스페이스 · 포트로 ingress/egress를 허용. 이 프로젝트는 DB 티어 파드의 3306 · 6379를 <code>tier=backend</code> 파드만 열고 DB 파드의 egress는 DNS만 허용, 업무 파드는 같은 티어 · monitoring 에서만 받음(<code>02-networkpolicy.yaml</code>)</td></tr>
 <tr><td>EBS 볼륨(gp3 디스크)</td><td>EC2 노드에 붙는 블록 디스크. PVC(<code>ebs-sc</code>)로 MySQL · Redis · Prometheus · Loki 데이터를 담음. AZ에 묶이므로 2a 볼륨은 2a 노드에서만 마운트됨. 관리형 Redis(ElastiCache)와는 다른 것</td></tr>
 <tr><td>OIDC (GitHub Actions)</td><td>GitHub가 발급한 짧은 토큰으로 AWS 역할을 맡는 방식. 장기 액세스 키 불필요</td></tr>
 <tr><td>GitOps</td><td>Git 저장소 상태를 클러스터의 정답으로 삼고, ArgoCD가 클러스터를 그 상태로 맞춤. 이 프로젝트에서는 <code>gotgan-config</code> 저장소가 그 정답</td></tr>

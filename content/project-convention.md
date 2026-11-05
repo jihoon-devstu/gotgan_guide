@@ -474,6 +474,9 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 | 항목 | 규칙 |
 |---|---|
 | 타임아웃 | 연결 2초 · 읽기 3초 (`common/config/RestClientConfig`) — 필수 |
+| 오래 걸리는 호출 | 배치성 호출만 클라이언트를 따로 — `SettlementBatchClient` 읽기 9초(집계 · 일괄 지급, gateway · 프론트 10초보다 짧게) |
+| 추적 | `RestClient` 를 직접 만들면 `ObservationRegistry` 를 함께 넘긴다 — 빠지면 서비스 간 traceId 가 끊김(QA Q-박-5) |
+| 비동기 풀 | `AsyncTaskExecutor` 빈이 하나뿐이면 Boot 가 WebSocket 채널에 씌운다 — 알림용 풀은 `@Bean(defaultCandidate = false)` + `@Qualifier`(k6 S5) |
 | 서킷 브레이커 | **client(대상 서비스)마다 인스턴스 하나**, 이름 = 대상 서비스 (`resilience4j.circuitbreaker.instances.product`) |
 | 재시도 | **멱등 GET만** (최대 2회). POST · PATCH는 재시도하지 않음 — Saga는 멱등 키 + 보상으로 처리 |
 | 폴백 | 도메인 예외 `EXTERNAL_API_ERROR`(502/504), 대시보드는 부분 응답 |
@@ -504,6 +507,7 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 - 봉투: `{ eventId, eventType, occurredAt, aggregateId, version, payload }`
 - `occurredAt`은 오프셋 포함 ISO-8601 (`2026-10-21T09:12:33+09:00`)
 - payload는 **구독자가 다시 호출하지 않아도 되도록** 필요한 값 포함 (주문자 이메일 · 금액 등)
+- payload 크기: 아웃박스 칼럼은 `MEDIUMTEXT`, SNS · SQS 한도는 256KB — 항목이 많은 이벤트는 압축 필드로 보낸다(`SettlementPaid.itemsGzip`)
 - 필드 추가는 자유, **삭제 · 이름 변경 · 의미 변경 금지** (새 이벤트 타입 또는 version 증가)
 - 이벤트 목록 · payload는 `docs/events.md`에 먼저 등록 후 구현
 - 소비자는 `processed_event` 테이블로 eventId 중복 처리 방지
@@ -686,6 +690,7 @@ public abstract class BaseTimeEntity {
 **UNIQUE**
 
 - 비즈니스적으로 유일한 값은 DB UNIQUE로 강제 — `email` · `order_no` · `portone_payment_id` · `(store_id, week)` · `event_id`
+- 유일한 번호를 "최댓값 + 1"로 만들지 않는다 — DB 한 문장으로 원자 채번(`order_no_sequence` + `LAST_INSERT_ID`, k6 S4: 100 동시 중 71건 500)
 - 복합 PK 금지 — PK는 단일 AUTO_INCREMENT, 중복 방지는 UNIQUE로
 
 ### 3-8. 인덱스
@@ -1020,9 +1025,10 @@ function AdminStoreListPage() {
 - 노드 그룹(3티어, 10/13 3차 · 10/14 사이징 조정): `app`(t3.xlarge ×2, 라벨 `tier=app`) · `db`(t3.medium ×1, 2a 고정, 라벨 + 테인트 `tier=db:NoSchedule`). 노드 라벨 값은 `app` · `db` 둘뿐
 - 파드 배치: 업무 서비스 · gateway · Keycloak · 관측성 · ArgoCD는 `nodeSelector: { tier: app }`(Helm `deployment.yaml` 기본). MySQL · Redis만 `nodeSelector: { tier: db }` + `tolerations: [{ key: tier, value: db, effect: NoSchedule }]`
 - 파드 라벨 `tier`: DB에 접속하는 파드(업무 서비스 · Keycloak · 디버그용 mysql 클라이언트)는 `tier: backend`, MySQL · Redis는 `tier: db`. `app:` 라벨과 별개로 둘 다 붙인다
-- NetworkPolicy(`deploy/k8s/02-networkpolicy.yaml`, bootstrap이 configmap 직후 적용): `tier=db` 파드의 3306 · 6379 ingress는 네임스페이스 `sesac-gojigi`의 `tier=backend` 파드만, `tier=db` 파드 egress는 kube-dns 53뿐. 정책 이름은 `db-ingress-from-backend` · `db-egress-deny-except-dns`. 다른 네임스페이스(monitoring 등)에서 DB에 직접 붙지 않는다
+- NetworkPolicy(`deploy/k8s/02-networkpolicy.yaml`, bootstrap이 configmap 직후 적용): `tier=db` 파드의 3306 · 6379 ingress는 네임스페이스 `sesac-gojigi`의 `tier=backend` 파드만, `tier=db` 파드 egress는 kube-dns 53뿐. 정책 이름은 `db-ingress-from-backend` · `db-egress-deny-except-dns`. 다른 네임스페이스(monitoring 등)에서 DB에 직접 붙지 않는다. 업무 티어(11/5): `tier=backend` 는 같은 티어 · `monitoring` 에서만(`backend-ingress-from-backend-monitoring`), gateway 8080 은 어디서나(`gateway-ingress-from-nlb`)
 - 이미지 태그: 커밋 SHA 7자리. `latest` 금지
 - 모든 컨테이너에 `resources.requests` 필수, 메모리 `limits` 필수
+- JVM 힙 상한은 Helm env `JAVA_TOOL_OPTIONS`(33%, admin 41%) — 이미지 값(75%)을 통째로 덮으므로 `ExitOnOutOfMemoryError` 도 함께 적는다. 힙 = max(256Mi, 라이브 × 2), 힙 + 힙 밖 + 약 180Mi ≤ limit
 
 ### 5-4. 환경 변수 · 설정
 

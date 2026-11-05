@@ -2200,7 +2200,7 @@ DynamoDB는 "접근 패턴을 먼저 정하고 키를 설계"합니다(Single Ta
 <tr><td><code>OrderItemConfirmed</code></td><td>order</td><td>settlement · review · user</td><td>정산 대상 적재 / <b>리뷰 작성 자격 저장</b> / 누적 구매확정 금액 → <b>회원등급 갱신</b></td></tr>
 <tr><td><code>OrderItemCancelled</code></td><td>order</td><td>알림 Lambda · admin(알림 센터)</td><td>취소 완료 메일 / 알림함</td></tr>
 <tr><td><code>OrderItemReturned</code></td><td>order</td><td>알림 Lambda · admin(알림 센터)</td><td>반품 완료 메일 / 알림함</td></tr>
-<tr><td><code>OrderClaimRequested</code></td><td>order</td><td>admin(알림 센터)</td><td>취소 · 반품 · 교환 요청을 판매자에게 <code>CLAIM_REQUESTED</code> 화면 알림(11/5)</td></tr>
+<tr><td><code>OrderClaimRequested</code></td><td>order</td><td>admin(알림 센터)</td><td>반품 · 교환 요청을 판매자에게 <code>CLAIM_REQUESTED</code> 화면 알림(11/5)</td></tr>
 <tr><td><code>SettlementPaid</code></td><td>settlement</td><td>정산 명세서 Lambda · admin(알림 센터)</td><td>명세서 CSV → S3 → 판매자 메일 / 알림함. 항목이 200KB 를 넘으면 <code>itemsGzip</code>(gzip + Base64)으로 보냄 — SNS 한도 256KB(11/5)</td></tr>
 </table></div>
 <p>리뷰 작성 자격을 이벤트로 받는 이유: 리뷰를 쓸 때마다 order에 "이 사람이 구매확정했나"를 동기로 물으면 order가 죽었을 때 리뷰도 못 씁니다. review가 <code>OrderItemConfirmed</code>를 받아 자기 DB(<code>review_eligibility</code>)에 저장하면 order 장애와 무관하게 리뷰를 쓸 수 있습니다.</p>

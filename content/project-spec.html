@@ -326,7 +326,7 @@ svg .ah2{fill:var(--point)}
 <tr><td><code>OrderItemConfirmed</code></td><td>order</td><td>settlement · review · user</td><td>정산 대상 적재 / 리뷰 작성 자격 저장 / 누적 구매액 → 등급</td></tr>
 <tr><td><code>OrderItemCancelled</code> · <code>OrderItemReturned</code></td><td>order</td><td>알림 Lambda · admin(알림 센터)</td><td>취소 · 반품 완료 메일 / 알림함 <code>ORDER_CANCELLED</code> · <code>ORDER_RETURNED</code></td></tr>
 <tr><td><code>SettlementPaid</code></td><td>settlement</td><td>정산 명세서 Lambda · admin(알림 센터)</td><td>명세서 생성 → S3 → 메일 / 알림함 <code>SETTLEMENT_PAID</code> · 항목 200KB 초과 시 <code>itemsGzip</code>(11/5)</td></tr>
-<tr><td><code>OrderClaimRequested</code></td><td>order</td><td>admin(알림 센터)</td><td>취소 · 반품 · 교환 요청 → 판매자 화면 알림 <code>CLAIM_REQUESTED</code>(11/5)</td></tr>
+<tr><td><code>OrderClaimRequested</code></td><td>order</td><td>admin(알림 센터)</td><td>반품 · 교환 요청 → 판매자 화면 알림 <code>CLAIM_REQUESTED</code>(11/5)</td></tr>
 </table></div>
 <ul class="b">
   <li>토픽 3개: <code>sesac-gojigi-store-events</code> · <code>sesac-gojigi-order-events</code> · <code>sesac-gojigi-settlement-events</code>, 구독자별 SQS 큐 + DLQ(3회) · 봉투 형식은 컨벤션 2-7</li>

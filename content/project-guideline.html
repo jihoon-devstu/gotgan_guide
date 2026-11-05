@@ -635,8 +635,9 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <tr><th>항목</th><th>값</th><th>근거</th></tr>
 <tr><td>메모리 limit · requests</td><td>768Mi · 512Mi 유지</td><td>힙 + 힙 밖 + 스레드 · 네이티브(실측 약 180Mi)가 768Mi 안. requests 는 2차 측정 working set 으로 재확인</td></tr>
 <tr><td>힙 상한(Helm env)</td><td><b>33%(254Mi), admin 41%(316Mi)</b></td><td>라이브 데이터 52 ~ 138Mi × 2. 이미지 기본 75%(557Mi)에서는 admin 이 힙 305Mi 사용 중 커밋이 557Mi 로 커지며 OOMKilled → 조정 뒤 재시작 0</td></tr>
-<tr><td>CPU requests</td><td>gateway 200m · product 250m · order · review · store · chat 150m · 나머지 100m · Keycloak 500m</td><td>사용량 순 배분. 합계 3.58 vCPU(46%), <b>노드 1대 장애 시 3.40 / 3.92 vCPU 로 전부 수용(N-1)</b></td></tr>
-<tr><td>커넥션 풀 · MySQL</td><td>서비스 풀 10 유지 · Keycloak 풀 30 · <code>max_connections</code> 250</td><td>풀 대기 0. 상한 151 은 로그인 몰림 때 도달, 배포 중 최대 193</td></tr>
+<tr><td>CPU requests</td><td>gateway 200m · product 250m · order · review · store · chat 150m · 나머지 100m · Keycloak 500m</td><td>사용량 순 배분. 합계 약 4.23 vCPU(54%). 노드 1대 장애 시 약 4.05 / 3.92 vCPU 로 예비 파드 일부 Pending 가능 — <b>남은 파드로 구매 경로 유지</b></td></tr>
+<tr><td>커넥션 풀 · MySQL</td><td>서비스 풀 10 유지 · Keycloak 풀 30 · <code>max_connections</code> 300</td><td>풀 대기 0. 풀 10 × (레플리카 + 롤링 1) 230 + 30 + 20 = 280</td></tr>
+<tr><td>구매 경로 이중화</td><td>gateway · payment · product · order · user · store 레플리카 2 · 노드 분산(<code>ScheduleAnyway</code>) · PDB(<code>maxUnavailable: 1</code>)</td><td>주문 한 건이 거치는 서비스만. 파드 · 노드 하나가 죽어도 구매 유지. 레플리카 1 에 PDB 를 걸면 drain 이 막혀 제외. MySQL · Redis · Keycloak · NAT 단일은 유지</td></tr>
 <tr><td>노드 · HPA</td><td>app t3.xlarge × 2 · db t3.medium · HPA 없음</td><td>피크(동시 200명) CPU · 메모리 27%. CPU 가 먼저 무너진 서비스 없음</td></tr>
 </table></div>
 <p class="cap"><code>db</code> 노드 그룹(t3.medium × 1) — DB 티어 파드 예산</p>
@@ -3607,7 +3608,7 @@ spec:
 <tr><td><code>k8s/db/</code></td><td>StorageClass(gp3) · MySQL StatefulSet + <code>init-schemas.sh</code>(스키마 10개 · 서비스별 계정 — chatdb 10/27) · <code>redis.yaml</code>(StatefulSet + Service, <b>AOF <code>appendonly yes</code> + PVC <code>ebs-sc</code> 1Gi</b> — 파드 재시작에도 장바구니 캐시 유지, 09장). 둘 다 <b><code>nodeSelector: tier: db</code> + <code>tolerations</code>(<code>tier=db:NoSchedule</code>) + 파드 라벨 <code>tier: db</code></b> → db 노드(t3.medium, 2a)에만 뜨고 NetworkPolicy 대상이 됨</td><td>bootstrap(매일 아침)</td></tr>
 <tr><td><code>k8s/keycloak/</code></td><td><code>realm-gotgan.json</code>(역할 3종 · <code>gotgan-backend</code> 클라이언트 · 매퍼 · 토큰 수명 · 시드 계정, client secret은 <code>${GOTGAN_BACKEND_CLIENT_SECRET}</code> 자리표시자) · Deployment · ClusterIP Service</td><td>bootstrap(매일 아침) (파일 담당 이경석)</td></tr>
 <tr><td><code>observability/</code></td><td>Prometheus · Loki · Zipkin · Grafana · kube-state-metrics + <code>dashboards/system-status.json</code> · <code>logs.json</code> (blackbox exporter 없음 — 10/13 3차)</td><td>bootstrap · kubectl / Helm (파일 담당 박지연)</td></tr>
-<tr><td><code>helm/sesac-gojigi-app/</code></td><td>서비스 10개(chat-service :8089 포함)의 Deployment · Service · ServiceAccount — Deployment는 <code>nodeSelector: tier: app</code> + 파드 라벨 <code>tier: backend</code>(NetworkPolicy가 DB 접근을 허용하는 기준)</td><td><b>ArgoCD</b></td></tr>
+<tr><td><code>helm/sesac-gojigi-app/</code></td><td>서비스 10개(chat-service :8089 포함)의 Deployment · Service · ServiceAccount · PDB(레플리카 2 이상만, 11/5) — Deployment는 <code>nodeSelector: tier: app</code> + 파드 라벨 <code>tier: backend</code>(NetworkPolicy가 DB 접근을 허용하는 기준)</td><td><b>ArgoCD</b></td></tr>
 <tr><td><code>argocd/application.yaml</code></td><td>감시할 저장소(<code>gotgan-config</code>) · 경로(<code>deploy/helm/sesac-gojigi-app</code>) · 자동 동기화 정책</td><td>bootstrap(ArgoCD 설치 직후)</td></tr>
 </table></div>
 <div class="box warn"><b class="t">realm JSON에 시크릿을 커밋하지 않기</b>

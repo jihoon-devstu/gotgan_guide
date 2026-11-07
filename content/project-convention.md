@@ -442,6 +442,7 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 - **서비스 간 호출 실패**: `client`에서 `RestClientResponseException`을 잡아 호출한 쪽 도메인 예외로 변환
   - 상대가 보낸 비즈니스 오류(재고 부족 409) → 의미가 같은 내 도메인 코드
   - 연결 실패 · 타임아웃 · 5xx · 서킷 열림 → `EXTERNAL_API_ERROR`(502/504) + Saga 보상 (대시보드 조합은 부분 응답, 2-7)
+  - 응답 문구에는 서비스 이름을 넣지 않고 업무 이름만 — `결제 준비에 실패했습니다.`(11/6). 서비스 이름은 로그에만
   - 예외: admin-service는 변환하지 않고 하위 서비스의 `code` · HTTP 상태를 그대로 전달
 - 게이트웨이 필터 체인(WebFlux) 안에서는 `BusinessException`을 던지지 않음 — 전용 핸들러가 JSON으로 응답
 
@@ -474,7 +475,7 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 | 항목 | 규칙 |
 |---|---|
 | 타임아웃 | 연결 2초 · 읽기 3초 (`common/config/RestClientConfig`) — 필수 |
-| 오래 걸리는 호출 | 배치성 호출만 클라이언트를 따로 — `SettlementBatchClient` 읽기 9초(집계 · 일괄 지급, gateway · 프론트 10초보다 짧게) |
+| 오래 걸리는 호출 | 배치성 호출만 클라이언트를 따로 — `SettlementBatchClient` 읽기 28초(집계 · 일괄 지급 — 5,000건 집계 5.6 ~ 11.6초, 11/6). gateway 는 이 두 경로만 라우트 `admin-settlement-batch` 30초 · 프론트 30초, 나머지 관리자 API 는 10초 그대로 |
 | 추적 | `RestClient` 를 직접 만들면 `ObservationRegistry` 를 함께 넘긴다 — 빠지면 서비스 간 traceId 가 끊김(QA Q-박-5) |
 | 비동기 풀 | `AsyncTaskExecutor` 빈이 하나뿐이면 Boot 가 WebSocket 채널에 씌운다 — 알림용 풀은 `@Bean(defaultCandidate = false)` + `@Qualifier`(k6 S5) |
 | 서킷 브레이커 | **client(대상 서비스)마다 인스턴스 하나**, 이름 = 대상 서비스 (`resilience4j.circuitbreaker.instances.product`) |
@@ -884,6 +885,7 @@ export const queryKeys = {
 
 - 컴포넌트에서 `useQuery({ queryKey: ['orders', params] })`처럼 즉석 배열 금지 — 무효화가 조용히 실패
 - 자기 도메인 구획 안에서만 추가 · 수정
+- 공개 조회라도 응답이 보는 사람에 따라 달라지면(`mine` 등) 키에 보는 사람 id 를 넣음 — 로그인 복구 전 토큰 없이 받은 응답이 남지 않게(11/6 리뷰 · 문의)
 
 **② API 함수**
 
@@ -961,6 +963,7 @@ function AdminStoreListPage() {
 
 - 정렬 기준과 화면 표시가 다르면 `accessorFn`(정렬용 값) + `cell`(표시) 분리
 - 로딩 · 에러 · 빈 상태는 **`<tbody>` 안의 행 하나**로 표현 — 검색창 등 다른 UI가 사라졌다 생기며 포커스를 잃지 않게
+- '없음'(404 · 빈 목록)과 실패(5xx · 연결 실패)를 구분 — 실패는 '불러오지 못했어요' + 다시 시도(11/6 상품 상세 · 채팅 목록)
 - 일괄 처리(발주확인 · 송장)는 `getSelectedRowModel()`로 선택 행 ID만 서버에 전송
 
 ### 4-8. 스타일
@@ -1026,7 +1029,7 @@ function AdminStoreListPage() {
 - 파드 배치: 업무 서비스 · gateway · Keycloak · 관측성 · ArgoCD는 `nodeSelector: { tier: app }`(Helm `deployment.yaml` 기본). MySQL · Redis만 `nodeSelector: { tier: db }` + `tolerations: [{ key: tier, value: db, effect: NoSchedule }]`
 - 파드 라벨 `tier`: DB에 접속하는 파드(업무 서비스 · Keycloak · 디버그용 mysql 클라이언트)는 `tier: backend`, MySQL · Redis는 `tier: db`. `app:` 라벨과 별개로 둘 다 붙인다
 - NetworkPolicy(`deploy/k8s/02-networkpolicy.yaml`, bootstrap이 configmap 직후 적용): `tier=db` 파드의 3306 · 6379 ingress는 네임스페이스 `sesac-gojigi`의 `tier=backend` 파드만, `tier=db` 파드 egress는 kube-dns 53뿐. 정책 이름은 `db-ingress-from-backend` · `db-egress-deny-except-dns`. 다른 네임스페이스(monitoring 등)에서 DB에 직접 붙지 않는다. 업무 티어(11/5): `tier=backend` 는 같은 티어 · `monitoring` 에서만(`backend-ingress-from-backend-monitoring`), gateway 8080 은 어디서나(`gateway-ingress-from-nlb`)
-- 이미지 태그: 커밋 SHA 7자리. `latest` 금지
+- 이미지 태그: 커밋 SHA 7자리. `latest` 금지. 외부 이미지는 패치 번호까지 고정(`keycloak:26.8.2`) — `26.8` 같은 움직이는 태그는 매일 생성 때 새 패치가 받아짐(11/6 Admin API 401)
 - 모든 컨테이너에 `resources.requests` 필수, 메모리 `limits` 필수
 - JVM 힙 상한은 Helm env `JAVA_TOOL_OPTIONS`(33%, admin 41%) — 이미지 값(75%)을 통째로 덮으므로 `ExitOnOutOfMemoryError` 도 함께 적는다. 힙 = max(256Mi, 라이브 × 2), 힙 + 힙 밖 + 약 180Mi ≤ limit
 

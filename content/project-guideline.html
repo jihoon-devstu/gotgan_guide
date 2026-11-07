@@ -807,7 +807,8 @@ data "aws_iam_roles" "github_actions" {
 <li>payment-service: AWS 권한 없음 (포트원 키는 <code>payment-service-secret</code> K8s Secret으로 들어옴)</li>
 <li>user-service: SQS 수신(store-events · order-events 구독 큐)</li>
 <li>settlement-service: SQS 수신(order-events · store-events 구독 큐), <code>sns:Publish</code>(settlement-events), <code>s3:GetObject</code>(reports — 명세서 presigned 링크) + 버킷 <code>s3:ListBucket</code>(HeadObject 존재 확인)</li>
-<li>admin-service · gateway-service: AWS 권한 없음</li>
+<li>admin-service: 알림 센터 — SQS 수신(admin 구독 큐) · DynamoDB <code>sesac-gojigi-inbox</code> Put · Query · Update (10/27)</li>
+<li>gateway-service: AWS 권한 없음</li>
 <li>grafana: CloudWatch 읽기 (Lambda 로그) — <b>박지연</b>(관측성 담당)이 <code>cluster/irsa_grafana.tf</code>로 작성. 역할 <code>sesac-gojigi-grafana-irsa</code>(11/6) — Lambda 로그 그룹 <code>/aws/lambda/sesac-gojigi-*</code> 읽기 + 지표 읽기만. Grafana 데이터소스 연결은 아직</li>
 <li>KMS · Secrets Manager 권한은 없습니다 (쓰지 않음)</li>
 <li>S3 HeadObject로 객체 존재를 확인하는 서비스는 버킷 <code>s3:ListBucket</code>이 필요합니다 — 없으면 없는 키에 404 대신 <b>403</b>이 옵니다(10/23)</li>
@@ -3700,7 +3701,7 @@ Terraform 변수 · 리소스에 비밀번호를 넣으면 그 값이 <b>상태 
     ports: ["6379:6379"]
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.8      # 로컬은 아직 26.8 — 클러스터는 26.8.2 고정(11/6)
+    image: quay.io/keycloak/keycloak:26.8.2    # 클러스터와 같은 버전 — 패치 번호까지 고정(11/6)
     command: ["start-dev", "--import-realm"]   # 개발 모드: HTTP · 캐시 끔 · 빠른 기동
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin       # 로컬 전용 값

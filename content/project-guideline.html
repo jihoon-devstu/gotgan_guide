@@ -630,10 +630,10 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <tr><td>시스템 (aws-node, kube-proxy, coredns, EBS CSI, LBC, metrics-server)</td><td>약 14</td><td>약 1.2Gi</td><td>DaemonSet은 노드 수만큼 늘어남</td></tr>
 <tr><td><b>합계</b></td><td><b>약 36</b></td><td><b>약 10.3Gi</b></td><td>t3.xlarge × 2 할당 가능 약 30Gi → <b>requests 여유 약 19.7Gi, 실사용(약 12.5~13.5Gi) 기준 여유 약 16.5Gi</b>. 노드 1대만 남아도(약 15Gi) 실사용 수용. 시크릿은 K8s Secret(secrets-sync)이라 운영자 파드가 없음</td></tr>
 </table></div>
-<p class="cap">k6 측정(11/4 ~ 11/5) 뒤 확정한 값 — 노드는 그대로, 힙 상한과 CPU 예약을 조정</p>
+<p class="cap">k6 측정(11/4 ~ 11/6) 뒤 확정한 값 — 노드는 그대로, 힙 상한과 CPU 예약을 조정. 11/6 2차(최종) 측정 뒤에도 값 변경 없음</p>
 <div class="tbl"><table>
 <tr><th>항목</th><th>값</th><th>근거</th></tr>
-<tr><td>메모리 limit · requests</td><td>768Mi · 512Mi 유지</td><td>힙 + 힙 밖 + 스레드 · 네이티브(실측 약 180Mi)가 768Mi 안. requests 는 2차 측정 working set 으로 재확인</td></tr>
+<tr><td>메모리 limit · requests</td><td>768Mi · 512Mi 유지</td><td>힙 + 힙 밖 + 스레드 · 네이티브(실측 약 180Mi)가 768Mi 안. 2차(11/6) S7 30분 메모리 평탄 · 최대 chat 665 · admin 661Mi(limit 의 86%) · OOM 0 → 둘 다 유지</td></tr>
 <tr><td>힙 상한(Helm env)</td><td><b>33%(254Mi), admin 41%(316Mi)</b></td><td>라이브 데이터 52 ~ 138Mi × 2. 이미지 기본 75%(557Mi)에서는 admin 이 힙 305Mi 사용 중 커밋이 557Mi 로 커지며 OOMKilled → 조정 뒤 재시작 0</td></tr>
 <tr><td>CPU requests</td><td>gateway 200m · product 250m · order · review · store · chat 150m · 나머지 100m · Keycloak 500m</td><td>사용량 순 배분. 합계 약 4.23 vCPU(54%). 노드 1대 장애 시 약 4.05 / 3.92 vCPU 로 예비 파드 일부 Pending 가능 — <b>남은 파드로 구매 경로 유지</b></td></tr>
 <tr><td>커넥션 풀 · MySQL</td><td>서비스 풀 10 유지 · Keycloak 풀 30 · <code>max_connections</code> 300</td><td>풀 대기 0. 풀 10 × (레플리카 + 롤링 1) 230 + 30 + 20 = 280</td></tr>
@@ -782,7 +782,7 @@ data "aws_iam_roles" "github_actions" {
 <li><b>NLB용 EIP 2개</b> + Route 53 A 레코드 · ACM 인증서(<code>dns.tf</code>) (05장)</li>
 <li>S3 4개: <code>sesac-gojigi-images-{계정4}</code>(<code>products/</code> · <code>reviews/</code> · <code>stores/</code> — 이 세 prefix만 <b>공개 읽기</b>, 업로드는 presigned PUT · 10/14), <code>seller-docs</code>, <code>reports</code>, <code>log-archive</code>(90일 후 Glacier)</li>
 <li>SNS 토픽 3개: <code>sesac-gojigi-store-events</code> · <code>order-events</code> · <code>settlement-events</code> + 구독자별 SQS 큐 · DLQ(3회)</li>
-<li>DynamoDB 2개: <code>sesac-gojigi-notifications</code> · <code>sesac-gojigi-settlement-reports</code></li>
+<li>DynamoDB 3개: <code>sesac-gojigi-notifications</code> · <code>sesac-gojigi-settlement-reports</code> · <code>sesac-gojigi-inbox</code>(10/27). inbox · settlement-reports 는 매일 08:00 apply 때 새로 만듭니다(11/6, 09장)</li>
 <li>SES 이메일 자격 증명</li>
 <li>SSM 파라미터(서버리스가 읽을 ARN) · 작업용 EC2 + SSM 인스턴스 프로파일(선택)</li>
 <li>서비스별 IRSA 역할은 여기 없음 → <code>cluster/irsa.tf</code>(위 "매일 다시 생긴다는 것의 뜻"). <code>app/</code>은 <code>cluster/</code>를 읽지 않습니다</li>
@@ -808,7 +808,7 @@ data "aws_iam_roles" "github_actions" {
 <li>user-service: SQS 수신(store-events · order-events 구독 큐)</li>
 <li>settlement-service: SQS 수신(order-events · store-events 구독 큐), <code>sns:Publish</code>(settlement-events), <code>s3:GetObject</code>(reports — 명세서 presigned 링크) + 버킷 <code>s3:ListBucket</code>(HeadObject 존재 확인)</li>
 <li>admin-service · gateway-service: AWS 권한 없음</li>
-<li>grafana: CloudWatch 읽기 (Lambda 로그) — <b>박지연</b>(관측성 담당)이 <code>cluster/irsa_grafana.tf</code>로 작성</li>
+<li>grafana: CloudWatch 읽기 (Lambda 로그) — <b>박지연</b>(관측성 담당)이 <code>cluster/irsa_grafana.tf</code>로 작성. 역할 <code>sesac-gojigi-grafana-irsa</code>(11/6) — Lambda 로그 그룹 <code>/aws/lambda/sesac-gojigi-*</code> 읽기 + 지표 읽기만. Grafana 데이터소스 연결은 아직</li>
 <li>KMS · Secrets Manager 권한은 없습니다 (쓰지 않음)</li>
 <li>S3 HeadObject로 객체 존재를 확인하는 서비스는 버킷 <code>s3:ListBucket</code>이 필요합니다 — 없으면 없는 키에 404 대신 <b>403</b>이 옵니다(10/23)</li>
 <li>AWS SDK를 쓰는 서비스는 <code>software.amazon.awssdk:sts</code> 의존성이 <b>반드시</b> 필요합니다 — IRSA 웹 아이덴티티 토큰을 STS로 교환하므로, 없으면 로컬은 되고 클러스터에서만 자격 증명 실패(10/23 store 502 사례)</li>
@@ -1834,7 +1834,7 @@ Cognito는 검토했으나 제외했습니다. 서버리스를 배치 · 로깅�
 <tr><td>Realm 역할</td><td><code>BUYER</code>(가입 시) · <code>SELLER</code>(입점 승인 시 추가) · <code>ADMIN</code>(시드로만). 한 사람이 BUYER + SELLER를 함께 가짐</td></tr>
 <tr><td>사용자 속성</td><td><code>user_id</code>(userdb BIGINT) · <code>store_id</code>(판매자만). Keycloak 24+는 <b>User Profile에 선언한 속성만 저장</b>하므로 realm의 User Profile에 두 속성을 선언하고 편집 권한은 관리자만</td></tr>
 <tr><td>프로토콜 매퍼</td><td>User Attribute <code>user_id</code> → 클레임 <code>user_id</code>(JSON 타입 long) · <code>store_id</code> → <code>store_id</code> · User Realm Role → 클레임 <code>roles</code>(multivalued). Access Token에 추가 켬</td></tr>
-<tr><td>클라이언트</td><td><code>gotgan-backend</code> — confidential(Client authentication 켬), <b>Direct Access Grants 켬</b>, Standard Flow 끔, <b>Service Accounts 켬</b> + <code>realm-management</code>의 <code>manage-users</code> 역할 (역할 조회가 막히면 <code>view-realm</code> 추가)</td></tr>
+<tr><td>클라이언트</td><td><code>gotgan-backend</code> — confidential(Client authentication 켬), <b>Direct Access Grants 켬</b>, Standard Flow 끔, <b>Service Accounts 켬</b> + <code>realm-management</code>의 <code>manage-users</code> 역할 (역할 조회가 막히면 <code>view-realm</code> 추가). 26.8.2 부터 Admin API 토큰에 <code>kc-admin-api</code> 클라이언트 스코프가 있어야 함 → <code>scripts/keycloak-seed.sh</code> 가 기본 스코프로 할당(11/6, 매일 bootstrap · 멱등)</td></tr>
 <tr><td>토큰 수명</td><td>Access Token 30분 · SSO Session Idle / Max 14일(= Refresh 수명) · Revoke Refresh Token 켬</td></tr>
 <tr><td>보안</td><td>Brute Force Detection 켬, 비밀번호 정책(8자 이상 등), 이메일을 username으로 사용</td></tr>
 <tr><td>client secret</td><td>realm JSON에는 <code>${GOTGAN_BACKEND_CLIENT_SECRET}</code> 자리표시자만(import 시 환경 변수 치환). 실제 값은 GitHub Secret <code>KEYCLOAK_CLIENT_SECRET</code> → secrets-sync → <code>keycloak-secret</code>(Keycloak) · <code>user-service-secret</code>(user-service)</td></tr>
@@ -2013,7 +2013,7 @@ public class UserHeaderFilter implements GlobalFilter, Ordered {
 <p class="cap">deploy/k8s/keycloak/keycloak.yaml (핵심만)</p>
 <pre><code>containers:
   - name: keycloak
-    image: quay.io/keycloak/keycloak:26.8          # docker-compose · 클러스터 같은 버전
+    image: quay.io/keycloak/keycloak:26.8.2        # 패치 번호까지 고정(11/6) — 26.8 은 움직이는 태그라 26.8.2 가 자동으로 받아져 Admin API 401
     args: ["start", "--import-realm"]
     env:
       - { name: KC_DB, value: mysql }
@@ -2152,9 +2152,10 @@ resilience4j:
 <tr><th>테이블</th><th>PK / SK</th><th>쓰는 곳</th><th>용도</th><th>우선순위</th></tr>
 <tr><td><code>sesac-gojigi-notifications</code></td><td>PK <code>USER#{userId}</code> / SK <code>{occurredAt}#{eventId}</code>, TTL 90일</td><td><code>order-notification</code> Lambda</td><td>메일 발송 이력 + <b>같은 이벤트 중복 발송 방지(멱등)</b></td><td><span class="tag should">Should</span></td></tr>
 <tr><td><code>sesac-gojigi-settlement-reports</code></td><td>PK <code>STORE#{storeId}</code> / SK <code>WEEK#{2026-W42}</code></td><td><code>settlement-report</code> Lambda</td><td>명세서 S3 경로 · 발송 시각 · 발송 결과 → 같은 주차 명세서 중복 발송 방지, 재발송 여부 판단</td><td><span class="tag should">Should</span></td></tr>
-<tr><td><code>sesac-gojigi-inbox</code> (10/27)</td><td>PK 받는 쪽 <code>USER#{id}</code> · <code>STORE#{id}</code> · <code>ADMIN</code> / SK <code>{epochms 13자리}#{eventId}</code>, TTL 90일</td><td>admin-service <code>notification</code>(알림 센터)</td><td>화면 알림함 — 목록(cursor) · 안 읽은 수 · 읽음. 조건부 저장으로 같은 이벤트는 한 번만</td><td><span class="tag could">Could</span></td></tr>
+<tr><td><code>sesac-gojigi-inbox</code> (10/27)</td><td>PK 받는 쪽 <code>USER#{id}</code> · <code>STORE#{id}</code> · <code>ADMIN</code> / SK <code>{epochms 13자리}#{eventId}</code>, TTL 90일</td><td>admin-service <code>notification</code>(알림 센터)</td><td>화면 알림함 — 목록(cursor) · 안 읽은 수(100건까지만 셈, 화면 99+ — 11/6) · 읽음. 조건부 저장으로 같은 이벤트는 한 번만</td><td><span class="tag could">Could</span></td></tr>
 </table></div>
 <p>그 외 테이블은 만들지 않습니다. 앞 두 테이블은 서버리스 함수(11장)의 멱등 · 이력용이고, Spring 서비스 중 DynamoDB에 접근하는 것은 알림함을 쓰는 admin-service 하나뿐입니다(10/27).</p>
+<p><b>매일 새로 만드는 표(11/6)</b>: <code>sesac-gojigi-inbox</code> · <code>sesac-gojigi-settlement-reports</code> 는 매일 08:00 apply 때 <code>infra-schedule.yml</code> 이 <code>cluster/</code> 적용 전에 두 표만 <code>-target</code> + <code>-replace</code> 로 다시 만듭니다. DB 는 매일 초기화되어 번호가 1부터 다시 시작하는데 표는 남아 있어 중복 표식이 겹쳤고, 알림 · 명세서가 빠졌습니다(2차 QA). 그래서 알림함과 명세서 발송 이력은 하루만 유지됩니다. 메일 발송 이력 <code>sesac-gojigi-notifications</code> 는 그대로 둡니다. 표 이름 · ARN 이 같아 IRSA · 환경변수 변경은 없습니다.</p>
 <p class="cap">infra/terraform/app/dynamodb.tf — 사용량 기반 과금 + TTL</p>
 <pre><code>resource "aws_dynamodb_table" "notifications" {
   name         = "sesac-gojigi-notifications"
@@ -2755,7 +2756,7 @@ sonar {
 <tr><td>SQL Injection</td><td><b>파라미터 바인딩</b>. JPA · QueryDSL은 기본으로 바인딩. <code>@Query</code> · 네이티브 쿼리에서 문자열 이어 붙이기 금지(정렬 컬럼은 화이트리스트)</td><td>SonarQube 규칙 · 코드 리뷰</td></tr>
 <tr><td>XSS</td><td>리뷰 · 상품문의 · 입점 신청 등 사용자 입력 HTML은 <b>OWASP Java HTML Sanitizer</b>로 <b>저장 전</b> 정화. 프론트는 <code>dangerouslySetInnerHTML</code> 지양 — 꼭 써야 하면 DOMPurify <code>safeHtml</code> 경유(2중 정화, 10/27)</td><td>코드 리뷰</td></tr>
 <tr><td>클릭재킹 · 외부 스크립트 · 위장 업로드 (10/27 추가)</td><td><b>CSP · 보안 헤더</b>(프론트 Vercel <code>vercel.json</code> 은 <code>Content-Security-Policy-Report-Only</code> — 결제 · 우편번호 확인 후 강제 예정 / API 응답은 게이트웨이가 <code>default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'</code> + HSTS), S3 업로드는 <b>upload-guard Lambda</b>가 앞 16바이트(매직 바이트)로 경로 · 확장자 · 형식 확인 → 위장 · 빈 파일 삭제 + 알림 메일, 게이트웨이 <b>요청 제한</b>(11/02 — 아래 행) · <b>멱등 키</b>(이경석)</td><td><code>curl -I</code> · 위장 파일 업로드 시험</td></tr>
-<tr><td>무차별 대입 · 과부하 · 무한 대기 (11/02 추가)</td><td>게이트웨이 <b>요청 제한</b>(Redis) — POST 로그인 · 가입은 IP 당 분당 30회, 그 밖의 API 는 사용자(비로그인은 IP)당 초당 20회 · 순간 40회, Redis 장애 시 통과(fail-open) · 응답 429(프론트 안내). 서비스 호출 <b>타임아웃</b> 연결 2초 · 응답 10초(주문 15초) → 504 · 502 를 공통 오류 형식으로, SSE(<code>/api/notifications/stream</code>)만 타임아웃 끔. Keycloak 계정 콘솔 차단 (backend #204 · #205 · #210, 이경석)</td><td>부하테스트(k6)에서 429 · 504 를 따로 집계</td></tr>
+<tr><td>무차별 대입 · 과부하 · 무한 대기 (11/02 추가)</td><td>게이트웨이 <b>요청 제한</b>(Redis) — POST 로그인 · 가입은 IP 당 분당 30회, 그 밖의 API 는 사용자(비로그인은 IP)당 초당 20회 · 순간 40회, Redis 장애 시 통과(fail-open) · 응답 429(프론트 안내). 서비스 호출 <b>타임아웃</b> 연결 2초 · 응답 10초(주문 15초 · 정산 집계 · 일괄 지급 30초 — 11/6 라우트 <code>admin-settlement-batch</code>) → 504 · 502 를 공통 오류 형식으로, SSE(<code>/api/notifications/stream</code>)만 타임아웃 끔. Keycloak 계정 콘솔 차단 (backend #204 · #205 · #210, 이경석)</td><td>부하테스트(k6)에서 429 · 504 를 따로 집계</td></tr>
 <tr><td>CI 공급망 · 과한 권한 · 평문 전송 (11/02 추가)</td><td>워크플로 권한은 <b>잡 단위</b>(최상단 <code>contents: read</code>, OIDC 가 필요한 잡에만 <code>id-token: write</code>) · 외부 액션은 태그가 아니라 <b>커밋 SHA 고정</b> · 쿠버네티스 API 를 안 쓰는 파드(IRSA 없는 서비스 · Keycloak)는 <code>automountServiceAccountToken: false</code> · S3 모든 버킷과 상태 버킷에 <code>aws:SecureTransport=false</code> 거부 정책 (config #62)</td><td>SonarCloud config 프로젝트 · <code>curl http://…s3…</code> 403</td></tr>
 <tr><td>시크릿 유출</td><td><b>GitHub Secrets</b> → <code>secrets-sync</code> 워크플로 → K8s Secret → 파드 환경 변수(위 절). 코드 · 주석 · 로그 · Git 히스토리 어디에도 키 금지, realm JSON · YAML은 자리표시자만</td><td><b>gitleaks</b>(PR · pre-commit, 구현 예정 — 10/23 현재 스텁), GitHub Secret scanning</td></tr>
 <tr><td>로그 저장소 노출</td><td>Grafana · Loki · Prometheus · Keycloak 콘솔은 외부 미노출, <code>port-forward</code>로만 접속. 로그에 개인정보 · 토큰 금지(13장)</td><td>Service 타입 ClusterIP 확인</td></tr>
@@ -2821,15 +2822,15 @@ class SagaMetrics {
 <li><b>System Status (헬스 체크)</b>: 아래 절 — 시연용 메인 화면</li>
 <li><b>서비스 개요 (RED)</b>: 서비스별 요청 수, 오류율(5xx), p95 지연 — <code>histogram_quantile(0.95, sum by (le, app) (rate(http_server_requests_seconds_bucket[5m])))</code></li>
 <li><b>JVM</b>: 힙, GC 시간, 스레드, 파드 재시작</li>
-<li><b>비즈니스</b>: 분당 주문, 결제 실패, saga 보상, 서킷 브레이커 상태, 이벤트 DLQ 적재 수</li>
-<li><b>클러스터</b>: 노드 · 파드 CPU/메모리 (kube-state-metrics + cAdvisor)</li>
+<li><b>비즈니스</b>(<code>business.json</code>, 11/6): 주문 · 결제 성공 · 실패, 분당 주문 · 결제 · 클레임, Saga 보상 · 재시도 · 실패, 결제 금액 불일치 · 결제 이상. 전용 지표가 없는 주문 · 결제 · 클레임은 order 요청 지표(POST 경로)로 계산. 이벤트 DLQ 적재 수는 CloudWatch 연결 뒤 추가. 서킷 브레이커 상태는 System Status 로 옮김</li>
+<li><b>클러스터</b>(<code>cluster.json</code>, 11/6): 노드 · 파드 CPU/메모리 · requests 비율 · 파드 배치 · 재시작 (kube-state-metrics + cAdvisor, node-exporter 없음)</li>
 </ol>
-<p>대시보드는 JSON으로 내보내 <code>deploy/observability/dashboards/</code>에 커밋하고 프로비저닝 → 클러스터를 다시 만들어도 복원됩니다. 현재(10/23) bootstrap이 ConfigMap(<code>--from-file</code> + <code>--server-side</code>)으로 올리는 것은 <b>System Status</b>(<code>system-status.json</code>) · <b>Logs</b>(<code>logs.json</code>, <code>$app</code> 변수 1개 대시보드) 2개이고, Grafana 플러그인 자동 설치는 끕니다(<code>GF_PLUGINS_PREINSTALL_DISABLED</code>).</p></div>
-<div class="card"><h4>알림 3개 (Grafana Alerting → Discord/Slack 웹훅)</h4>
+<p>대시보드는 JSON으로 내보내 <code>deploy/observability/dashboards/</code>에 커밋하고 프로비저닝 → 클러스터를 다시 만들어도 복원됩니다. 현재(11/7) bootstrap이 ConfigMap(<code>--from-file</code> + <code>--server-side</code>)으로 올리는 것은 <b>System Status</b>(<code>system-status.json</code>) · <b>Logs</b>(<code>logs.json</code>, <code>$app</code> 변수 1개 대시보드) · <b>서비스 (RED)</b>(<code>services.json</code>) · <b>JVM</b>(<code>jvm.json</code>) · <b>비즈니스</b>(<code>business.json</code>) · <b>클러스터</b>(<code>cluster.json</code>) 6개이고(Lambda 대시보드는 CloudWatch 데이터소스 뒤), Grafana 플러그인 자동 설치는 끕니다(<code>GF_PLUGINS_PREINSTALL_DISABLED</code>).</p></div>
+<div class="card"><h4>알림 규칙 12개 (Grafana Alerting → Discord · 관리자 벨)</h4>
 <ul>
-<li>5분간 5xx 비율 &gt; 5%</li>
-<li>파드 재시작 증가 (OOMKilled 의심)</li>
-<li>saga 보상 또는 DLQ 메시지 발생</li>
+<li>지표 9개(<code>rules.yaml</code>): 서킷 OPEN · DB 커넥션 풀 대기 · 파드 재시작 · 메모리 limit 90% 초과 · 서비스 다운 · 5xx 비율 5% 초과 · Saga 실패 · 결제 금액 불일치 · 결제 취소 미해결</li>
+<li>로그 3개(<code>rules-logs.yaml</code>, 11/6 — Loki 로그를 1분마다 조회): 이벤트 발행 한도 초과(critical) · 요청 제한 오류 · Gateway 502/504 증가(라우트별 5분 6건 이상)</li>
+<li>Grafana 는 외부 미노출이라 Discord 제목 링크(<code>localhost:3000</code>)는 port-forward 를 켜야 열림 → 메시지 끝에 <code>kubectl -n monitoring port-forward svc/grafana 3000</code> 안내(11/6)</li>
 </ul>
 <h4>로그 ↔ 트레이스 연결</h4>
 <p>Grafana Loki 데이터소스의 <b>Derived fields</b>에 <code>traceId</code> 정규식을 걸어 Zipkin 링크로 연결 → 에러 로그에서 클릭 한 번으로 그 요청의 전체 경로(게이트웨이 → order → product → payment)를 봅니다. 반대로 Zipkin 트레이스의 구간에서 <b>Related logs</b>를 누르면 <code>{namespace="sesac-gojigi"} |= "&lt;traceId&gt;"</code>로 그 요청이 거친 모든 서비스의 로그를 시간순으로 엽니다. Zipkin 구간에는 <code>service.name</code> 속성이 없어 서비스별 태그 매핑으로는 링크가 생기지 않으므로 traceId로만 찾습니다. 두 방향 모두 로그 본문이 JSON <code>"traceId":"..."</code> 형식이어야 동작합니다(<code>logback-spring.xml</code>).</p></div>
@@ -2839,13 +2840,16 @@ class SagaMetrics {
 <p>관리자 화면에 별도 "시스템 상태" 페이지는 만들지 않고 Grafana 대시보드 하나로 보여줍니다. 시연 때는 kiosk 모드(<code>?kiosk</code>)로 전체 화면에 띄웁니다. 수집에 <b>kube-state-metrics</b>(필수)가 필요하고, 패널은 Prometheus <code>up</code>과 kube-state-metrics 지표만으로 만듭니다 — blackbox exporter는 쓰지 않습니다(10/13 3차, 04장 파드 예산 포함). 입구 생존은 gateway 파드 2개의 <code>up</code> · Ready로 봅니다.</p>
 <div class="tbl"><table>
 <tr><th>패널</th><th>형태</th><th>쿼리 (예)</th><th>보이는 것</th></tr>
-<tr><td>서비스별 가용 상태 (10개 + Keycloak · MySQL · Redis)</td><td>Stat (서비스마다 타일 1개)</td><td>업무 서비스 · Keycloak(Deployment): <code>kube_deployment_status_replicas_available{namespace="sesac-gojigi"} / clamp_min(kube_deployment_spec_replicas{namespace="sesac-gojigi"}, 1)</code><br>MySQL · Redis(StatefulSet): <code>kube_statefulset_status_replicas_ready{namespace="sesac-gojigi"} / clamp_min(kube_statefulset_replicas{namespace="sesac-gojigi"}, 1)</code> — Deployment 지표에는 나오지 않는다<br><code>clamp_min(…, 1)</code>: 시연처럼 레플리카를 0 으로 줄이면 분모가 0 이라 0/0 = NaN(타일 "No data") → 분모를 최소 1 로 두어 0(빨강)으로 보이게 한다 (promtool 로 확인)</td><td>1 = 초록, 0~1 = 노랑(일부만 살아 있음 · 롤링 중), 0 = 빨강</td></tr>
-<tr><td>수집 대상 생존</td><td><b>State timeline</b> (최근 30분)</td><td><code>up{namespace="sesac-gojigi"}</code></td><td>죽었다 살아나는 구간이 시간축 위에 빨강 → 초록 띠로 보임</td></tr>
+<tr><td>서비스 상태 (10개 + Keycloak · MySQL · Redis)</td><td>Stat (서비스마다 타일 1개)</td><td>업무 서비스 · Keycloak(Deployment): <code>kube_deployment_status_replicas_available{namespace="sesac-gojigi"} / clamp_min(kube_deployment_spec_replicas{namespace="sesac-gojigi"}, 1)</code><br>MySQL · Redis(StatefulSet): <code>kube_statefulset_status_replicas_ready{namespace="sesac-gojigi"} / clamp_min(kube_statefulset_replicas{namespace="sesac-gojigi"}, 1)</code> — Deployment 지표에는 나오지 않는다<br><code>clamp_min(…, 1)</code>: 시연처럼 레플리카를 0 으로 줄이면 분모가 0 이라 0/0 = NaN(타일 "No data") → 분모를 최소 1 로 두어 0(빨강)으로 보이게 한다 (promtool 로 확인)</td><td>1 = 초록, 0~1 = 노랑(일부만 살아 있음 · 롤링 중), 0 = 빨강</td></tr>
+<tr><td>Scrape 상태 (up)</td><td><b>State timeline</b> (최근 30분)</td><td><code>up{namespace="sesac-gojigi"}</code></td><td>죽었다 살아나는 구간이 시간축 위에 빨강 → 초록 띠로 보임</td></tr>
 <tr><td>파드 Ready</td><td>State timeline</td><td><code>kube_pod_status_ready{namespace="sesac-gojigi", condition="true"}</code></td><td>롤링 배포 때 새 파드가 Ready가 된 뒤 옛 파드가 빠지는 순서</td></tr>
-<tr><td>파드 재시작 수</td><td>Stat</td><td><code>increase(kube_pod_container_status_restarts_total{namespace="sesac-gojigi"}[10m])</code></td><td>0 = 초록, 1 이상 = 노랑, 3 이상 = 빨강 (파드 삭제는 세지 않음 — OOMKilled · liveness 실패만)</td></tr>
-<tr><td>서비스별 5xx 비율</td><td>Time series</td><td><code>sum by (app)(rate(http_server_requests_seconds_count{status=~"5.."}[1m]))</code></td><td>배포 · 장애 중 오류가 0으로 유지되는지</td></tr>
-<tr><td>롤링 배포</td><td>Time series</td><td><code>kube_replicaset_status_ready_replicas{namespace="sesac-gojigi"}</code></td><td>옛 ReplicaSet ↓ · 새 ReplicaSet ↑ 교차</td></tr>
-<tr><td>입구 생존 (gateway)</td><td>Stat</td><td><code>count(up{namespace="sesac-gojigi", app="gateway-service"} == 1) or vector(0)</code></td><td>살아 있는 gateway 수 — 2 = 초록(둘 다), 1 = 노랑(하나만 · 요청은 계속 처리), 0 = 빨강. 진입점이 살아 있는지. 외부 프로브(blackbox) 없이 수집 대상 생존으로 판단. <code>or vector(0)</code>: 둘 다 없으면 결과가 비어 No data 가 되므로 0 으로</td></tr>
+<tr><td>컨테이너 재시작 (10분)</td><td>Stat</td><td><code>increase(kube_pod_container_status_restarts_total{namespace="sesac-gojigi"}[10m])</code></td><td>0 = 초록, 1 이상 = 노랑, 3 이상 = 빨강 (파드 삭제는 세지 않음 — OOMKilled · liveness 실패만)</td></tr>
+<tr><td>5xx 요청 수 (RPS)</td><td>Time series</td><td><code>sum by (app)(rate(http_server_requests_seconds_count{status=~"5.."}[1m]))</code> <code>or sum by (app)(up{app=~".+-service"}) * 0</code></td><td>배포 · 장애 중 오류가 0으로 유지되는지. 0 선을 <code>up</code> 기준으로 그려 10개 서비스를 모두 표시(11/6 — 요청받은 서비스만 보여 그 서비스에서만 오류가 나는 것처럼 읽혔음)</td></tr>
+<tr><td>ReplicaSet별 Ready 파드 수</td><td>Time series</td><td><code>kube_replicaset_status_ready_replicas{namespace="sesac-gojigi"} &gt; 0</code></td><td>옛 ReplicaSet ↓ · 새 ReplicaSet ↑ 교차. <code>&gt; 0</code> 으로 지난 배포 버전(0개)은 숨김(11/6)</td></tr>
+<tr><td>Gateway 상태</td><td>Stat</td><td><code>count(up{namespace="sesac-gojigi", app="gateway-service"} == 1) or vector(0)</code></td><td>살아 있는 gateway 수 — 2 = 초록(둘 다), 1 = 노랑(하나만 · 요청은 계속 처리), 0 = 빨강. 진입점이 살아 있는지. 외부 프로브(blackbox) 없이 수집 대상 생존으로 판단. <code>or vector(0)</code>: 둘 다 없으면 결과가 비어 No data 가 되므로 0 으로</td></tr>
+<tr><td>서킷 OPEN 수 (11/6)</td><td>Stat</td><td><code>count(max by (app, name)(resilience4j_circuitbreaker_state{state="open"}) == 1) or vector(0)</code></td><td>지금 열린 서킷 수(호출 서비스 · 대상 기준)</td></tr>
+<tr><td>서킷 상태 (11/6)</td><td>State timeline</td><td><code>resilience4j_circuitbreaker_state</code> 의 open · half_open</td><td>정상 · 시험 호출 · OPEN — 어느 호출이 끊겼는지</td></tr>
+<tr><td>서킷 실패율 (11/6)</td><td>Time series</td><td><code>resilience4j_circuitbreaker_failure_rate</code></td><td>실패 비율과 50% 기준선. 호출이 최소 횟수보다 적으면 <code>Not enough calls</code></td></tr>
 </table></div>
 <p><b>값 매핑(Value mappings) · 임곗값</b>: Stat 패널은 Thresholds를 <code>0 → red</code>, <code>0.01 → yellow</code>, <code>1 → green</code>으로 두고, 값 매핑으로 <code>1 → "UP"</code>, <code>0 → "DOWN"</code> 텍스트를 표시합니다. State timeline도 같은 매핑을 써서 색이 패널마다 같게 보이게 합니다. 새로 고침 간격은 5초, Prometheus 수집 간격은 시연 기간에 10~15초로 둡니다.</p>
 
@@ -2858,12 +2862,12 @@ class SagaMetrics {
 <tr><td>④</td><td><b>무중단 배포</b>: 이미지 태그 변경 → ArgoCD 롤링, 그동안 부하 도구(k6 등)로 요청을 계속 보냄</td><td>새 ReplicaSet ↑ · 옛 ReplicaSet ↓, 타일 잠깐 노랑, <b>5xx 비율 0 유지</b></td><td><code>strategy.rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }</code>, readinessProbe(<code>/actuator/health/readiness</code>), <code>preStop: sleep 10</code> + <code>terminationGracePeriodSeconds: 30</code>, <code>server.shutdown=graceful</code></td></tr>
 <tr><td>⑤</td><td>(가능하면) <b>롤백</b>: 일부러 실패하는 버전 배포 → Git revert 커밋 → ArgoCD 동기화</td><td>새 파드가 Ready가 안 돼 옛 파드가 계속 서비스(5xx 0) → 되돌린 뒤 초록</td><td>④의 설정 그대로(readiness 실패 시 롤링이 멈춤), ArgoCD 자동 동기화</td></tr>
 <tr><td>⑥</td><td><b>Saga 보상</b>: 재고 부족 주문, 결제 금액 위변조</td><td><code>saga_compensated_total</code> 증가, WARN 로그, Zipkin에 보상 단계, 포트원 자동 취소</td><td>06 · 07장 Saga · 결제 검증</td></tr>
-<tr><td>⑦</td><td><b>Redis 다운 → 장바구니 정상(MySQL 폴백)</b>: <code>kubectl scale sts/redis --replicas=0</code>(Redis 는 StatefulSet) → 장바구니 담기 · 조회 · 주문서 진행</td><td>Redis 타일만 빨강, order는 초록. 장바구니는 응답이 조금 느려질 뿐 정상 동작, 비즈니스 대시보드의 서킷 패널에 <code>redisCart</code> <b>OPEN</b> → Redis 복구 후 HALF_OPEN → CLOSED</td><td>원본 MySQL <code>cart_item</code> + Redis 캐시(write-through · read-through), Resilience4j <code>redisCart</code> 서킷 + 폴백, Redis AOF + PVC(09장), 서킷 상태 지표 패널</td></tr>
+<tr><td>⑦</td><td><b>Redis 다운 → 장바구니 정상(MySQL 폴백)</b>: <code>kubectl scale sts/redis --replicas=0</code>(Redis 는 StatefulSet) → 장바구니 담기 · 조회 · 주문서 진행</td><td>Redis 타일만 빨강, order는 초록. 장바구니는 응답이 조금 느려질 뿐 정상 동작, System Status 의 서킷 패널(11/6)에 <code>redisCart</code> <b>OPEN</b> → Redis 복구 후 HALF_OPEN → CLOSED</td><td>원본 MySQL <code>cart_item</code> + Redis 캐시(write-through · read-through), Resilience4j <code>redisCart</code> 서킷 + 폴백, Redis AOF + PVC(09장), 서킷 상태 지표 패널</td></tr>
 </table></div>
 <p>오토스케일링(HPA) 시연은 하지 않습니다. 이 도메인은 예매 · 경매처럼 순간 동시성이 폭주하는 서비스가 아니어서, 고정 레플리카로 장애 격리 · 자동 복구 · 무중단 배포를 보여주는 데 집중합니다(HPA는 20장).</p>
 
 <div class="box rec"><b class="t">Lambda까지 한 화면에</b>
-Lambda 로그 · 지표는 CloudWatch에 쌓입니다. Grafana에 <b>CloudWatch 데이터소스</b>를 추가하고(IRSA 역할: <code>CloudWatchReadOnlyAccess</code> 범위 축소) Logs Insights 쿼리로 알림 Lambda의 실패 로그를 대시보드에 넣으세요. 그래야 "주문은 됐는데 메일이 안 왔다"를 추적할 수 있습니다.</div>
+Lambda 로그 · 지표는 CloudWatch에 쌓입니다. Grafana에 <b>CloudWatch 데이터소스</b>를 추가하고(IRSA 역할 <code>sesac-gojigi-grafana-irsa</code> — <code>CloudWatchReadOnlyAccess</code> 대신 Lambda 로그 · 지표 읽기만, 역할은 11/6 추가 · 데이터소스 연결은 아직) Logs Insights 쿼리로 알림 Lambda의 실패 로그를 대시보드에 넣으세요. 그래야 "주문은 됐는데 메일이 안 왔다"를 추적할 수 있습니다.</div>
 <div class="box warn"><b class="t">자원 · 보존 기간 · 접근 통제</b>
 Prometheus · Loki 데이터는 EBS PVC(각 10Gi)에 두고 보존 7일로 제한하세요. 서비스 10개 수준이면 수집 간격 15초로 충분합니다. Grafana · Loki · Prometheus는 외부에 노출하지 말고 <code>kubectl port-forward</code>로 접속합니다(로그 저장소 접근 통제, 12장 보안 규칙). 노드 수가 바뀌면 파드 예산(04장)을 다시 확인하세요.</div>
 <div class="box prod"><b class="t">실무와의 차이</b>
@@ -3053,7 +3057,8 @@ gotgan-config/                              sesac-final-1/gotgan-config — Argo
 │   ├── argocd/application.yaml             "gotgan-config 의 deploy/helm/sesac-gojigi-app 폴더를 감시하라"
 │   └── observability/                      monitoring 네임스페이스
 │       ├── prometheus · loki · zipkin · grafana · kube-state-metrics   (blackbox exporter 없음 — 10/13 3차)
-│       └── dashboards/                     system-status.json(헬스 체크) · logs.json(로그, $app 변수)
+│       ├── alerting/                       rules.yaml(지표 9) · rules-logs.yaml(로그 3, 11/6) · contact-points.yaml(Discord · 관리자 벨)
+│       └── dashboards/                     system-status.json(헬스 체크) · logs.json(로그, $app 변수) · services.json · jvm.json · business.json · cluster.json(11/6)
 ├── infra/terraform/                        AWS 자원. 폴더 1개 = terraform apply 1번 = 상태 파일 1개 (위에서 아래 순서로 apply)
 │   ├── global/s3/                          상태 버킷 (잠금은 use_lockfile)                     ─ 상시
 │   ├── vpc/                                네트워크                                            ─ 상시
@@ -3563,7 +3568,7 @@ spec:
     spec:
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:26.8          # 로컬 docker-compose와 같은 버전으로 고정
+          image: quay.io/keycloak/keycloak:26.8.2        # 패치 번호까지 고정(11/6) — 26.8 은 움직이는 태그라 아침 생성 때 26.8.2 가 받아져 Admin API 401
           args: ["start", "--import-realm"]              # realm이 이미 있으면 가져오기는 건너뜀
           env:
             - { name: KC_DB, value: mysql }
@@ -3607,7 +3612,7 @@ spec:
 <tr><td>(파일 없음) <code>mysql-secret</code> · <code>{service}-secret</code> · <code>keycloak-secret</code> · <code>grafana-secret</code> · <code>alert-webhook-secret</code></td><td>GitHub Secrets를 <code>secrets-sync</code> 워크플로가 <code>kubectl create secret generic</code>으로 생성(12장). 저장소에 Secret YAML은 두지 않음</td><td>bootstrap이 매일 호출 · 값 변경 시 수동 실행 + <code>rollout restart</code></td></tr>
 <tr><td><code>k8s/db/</code></td><td>StorageClass(gp3) · MySQL StatefulSet + <code>init-schemas.sh</code>(스키마 10개 · 서비스별 계정 — chatdb 10/27) · <code>redis.yaml</code>(StatefulSet + Service, <b>AOF <code>appendonly yes</code> + PVC <code>ebs-sc</code> 1Gi</b> — 파드 재시작에도 장바구니 캐시 유지, 09장). 둘 다 <b><code>nodeSelector: tier: db</code> + <code>tolerations</code>(<code>tier=db:NoSchedule</code>) + 파드 라벨 <code>tier: db</code></b> → db 노드(t3.medium, 2a)에만 뜨고 NetworkPolicy 대상이 됨</td><td>bootstrap(매일 아침)</td></tr>
 <tr><td><code>k8s/keycloak/</code></td><td><code>realm-gotgan.json</code>(역할 3종 · <code>gotgan-backend</code> 클라이언트 · 매퍼 · 토큰 수명 · 시드 계정, client secret은 <code>${GOTGAN_BACKEND_CLIENT_SECRET}</code> 자리표시자) · Deployment · ClusterIP Service</td><td>bootstrap(매일 아침) (파일 담당 이경석)</td></tr>
-<tr><td><code>observability/</code></td><td>Prometheus · Loki · Zipkin · Grafana · kube-state-metrics + <code>dashboards/system-status.json</code> · <code>logs.json</code> (blackbox exporter 없음 — 10/13 3차)</td><td>bootstrap · kubectl / Helm (파일 담당 박지연)</td></tr>
+<tr><td><code>observability/</code></td><td>Prometheus · Loki · Zipkin · Grafana · kube-state-metrics + <code>dashboards/</code> 6개(<code>system-status.json</code> · <code>logs.json</code> · <code>services.json</code> · <code>jvm.json</code> · <code>business.json</code> · <code>cluster.json</code> — 뒤 둘은 11/6) · <code>alerting/</code> 규칙 12개 (blackbox exporter 없음 — 10/13 3차)</td><td>bootstrap · kubectl / Helm (파일 담당 박지연)</td></tr>
 <tr><td><code>helm/sesac-gojigi-app/</code></td><td>서비스 10개(chat-service :8089 포함)의 Deployment · Service · ServiceAccount · PDB(레플리카 2 이상만, 11/5) — Deployment는 <code>nodeSelector: tier: app</code> + 파드 라벨 <code>tier: backend</code>(NetworkPolicy가 DB 접근을 허용하는 기준)</td><td><b>ArgoCD</b></td></tr>
 <tr><td><code>argocd/application.yaml</code></td><td>감시할 저장소(<code>gotgan-config</code>) · 경로(<code>deploy/helm/sesac-gojigi-app</code>) · 자동 동기화 정책</td><td>bootstrap(ArgoCD 설치 직후)</td></tr>
 </table></div>
@@ -3631,7 +3636,7 @@ spec:
 <tr><td><code>sns_sqs.tf</code></td><td>토픽 3개: <code>sesac-gojigi-store-events</code> · <code>sesac-gojigi-order-events</code> · <code>sesac-gojigi-settlement-events</code><br>구독자별 큐 + DLQ(3회, <code>-dlq</code>), SNS 필터 정책(<b>본문 <code>eventType</code></b> 기준, raw delivery — 발행 측은 메시지 속성 불필요)으로 필요한 이벤트만:<br>store-events → <code>sesac-gojigi-user-store-events</code> · <code>-product-store-events</code> · <code>-settlement-store-events</code> · <code>-notification-store-events</code> · <code>-admin-store-events</code><br>order-events → <code>sesac-gojigi-user-order-events</code> · <code>-review-order-events</code> · <code>-settlement-order-events</code> · <code>-notification-order-events</code> · <code>-admin-order-events</code><br>settlement-events → <code>sesac-gojigi-report-settlement-events</code> · <code>-admin-settlement-events</code> (admin-* 3개는 알림 센터, 10/27)</td></tr>
 <tr><td><code>dynamodb.tf</code></td><td>테이블 2개: <code>sesac-gojigi-notifications</code>(알림 멱등 · 이력) · <code>sesac-gojigi-settlement-reports</code>(명세서 발송 이력 — PK <code>STORE#{storeId}</code> · SK <code>SETTLEMENT#{settlementId}</code>, 조건부 쓰기로 재발송 방지)</td></tr>
 <tr><td><code>ses.tf</code></td><td>발신 도메인/주소 인증 (샌드박스, 수신자도 인증)</td></tr>
-<tr><td><code>irsa.tf</code> → <b>cluster/</b>로 이동(10/13: 신뢰 정책이 그날의 OIDC 공급자를 가리켜 클러스터와 함께 재생성)</td><td><code>sesac-gojigi-{service}-irsa</code>: user(sqs) · store(sns · s3 seller-docs · s3 images/stores) · product(sqs · s3 images) · order(sns) · review(sqs · s3 images) · settlement(sqs · sns · s3 reports). grafana(CloudWatch 읽기)는 박지연이 <code>cluster/irsa_grafana.tf</code>로. gateway · payment · admin은 없음. <code>kms:Decrypt</code>는 없음(KMS 미사용)</td></tr>
+<tr><td><code>irsa.tf</code> → <b>cluster/</b>로 이동(10/13: 신뢰 정책이 그날의 OIDC 공급자를 가리켜 클러스터와 함께 재생성)</td><td><code>sesac-gojigi-{service}-irsa</code>: user(sqs) · store(sns · s3 seller-docs · s3 images/stores) · product(sqs · s3 images) · order(sns) · review(sqs · s3 images) · settlement(sqs · sns · s3 reports). grafana(CloudWatch 읽기)는 박지연이 <code>cluster/irsa_grafana.tf</code>로(<code>sesac-gojigi-grafana-irsa</code>, 11/6). gateway · payment · admin은 없음. <code>kms:Decrypt</code>는 없음(KMS 미사용)</td></tr>
 <tr><td><code>ssm.tf</code> · <code>eip.tf</code> · <code>dns.tf</code></td><td>Lambda가 읽을 ARN(<code>/sesac-gojigi/dev/...</code>) · 게이트웨이 NLB용 EIP · Route 53 A 레코드 + ACM 인증서(05장)</td></tr>
 </table></div>
 <div class="box warn"><b class="t">Terraform에는 비밀 값을 쓰지 않기</b>
@@ -3695,7 +3700,7 @@ Terraform 변수 · 리소스에 비밀번호를 넣으면 그 값이 <b>상태 
     ports: ["6379:6379"]
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.8      # 클러스터와 같은 버전
+    image: quay.io/keycloak/keycloak:26.8      # 로컬은 아직 26.8 — 클러스터는 26.8.2 고정(11/6)
     command: ["start-dev", "--import-realm"]   # 개발 모드: HTTP · 캐시 끔 · 빠른 기동
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin       # 로컬 전용 값
@@ -4033,6 +4038,9 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>WebSocket 메시지가 알림 풀에서 처리됨</td><td>채팅 왕복 지연 · 대기열 가득 참, DB · 풀은 여유. 스레드 덤프에 <code>clientInboundChannel</code> 스레드 없음</td><td>Boot 는 <code>AsyncTaskExecutor</code> 빈이 하나뿐이면 WebSocket 채널에 씌움 → 알림용 풀은 <code>@Bean(defaultCandidate = false)</code> + <code>@Qualifier</code>(11/5, 500 연결 p95 2,964 → 85ms)</td></tr>
 <tr><td>큰 이벤트 저장 · 발행 실패</td><td>한 스토어 주 약 300건부터 정산 지급 500</td><td>아웃박스 <code>payload</code> TEXT 64KB → MEDIUMTEXT, SNS 256KB 는 항목 압축(<code>itemsGzip</code>) · Lambda 가 풀어서 사용(11/5)</td></tr>
 <tr><td>동시 요청이 번호 · 유니크 키에서 충돌</td><td>재고는 맞는데 주문 500 · 같은 방 처음 열기 500</td><td>"최댓값 + 1" 금지 → 원자 채번(<code>order_no_sequence</code>). 동시 생성 충돌은 있는 행을 돌려주거나 409(11/5)</td></tr>
+<tr><td>움직이는 이미지 태그</td><td>코드 변경 없이 어느 날 아침 회원가입 · 비밀번호 변경 · 탈퇴 · 회원 정지가 전부 실패(Keycloak Admin API 401 → 502)</td><td>이미지 태그는 패치 번호까지 고정(<code>keycloak:26.8.2</code>). 26.8.2 부터 Admin API 토큰에 <code>kc-admin-api</code> 스코프가 필요해 <code>scripts/keycloak-seed.sh</code> 가 서비스 계정에 할당(11/6)</td></tr>
+<tr><td>매일 초기화되는 DB · 남는 DynamoDB 표</td><td>클러스터를 새로 만든 뒤 알림 · 명세서가 빠지고 옛 알림이 엉뚱한 화면으로 열림</td><td>DB 번호가 1부터 다시 시작해 표에 남은 중복 표식과 겹침 → 08:00 apply 때 <code>sesac-gojigi-inbox</code> · <code>settlement-reports</code> 를 새로 만듦(11/6, 09장). 알림 · 명세서 이력은 하루만 유지</td></tr>
+<tr><td>오래 걸리는 관리자 작업</td><td>5,000건 정산 집계가 502 — 집계 자체는 끝까지 완료</td><td>그 경로만 대기 시간을 늘림 — admin → settlement 28초 · gateway 라우트 <code>admin-settlement-batch</code> 30초 · 프론트 30초, 나머지 관리자 API 는 10초 유지(11/6). 11/7 재측정 5,000건 5.81초 · 200</td></tr>
 <tr><td>서비스 10개 로컬 메모리</td><td>로컬에서 서비스 + Keycloak + MySQL을 다 띄우면 멈춤</td><td>자기 서비스 + 직접 의존 1~2개 + MySQL · Redis만, 나머지는 MSW 또는 dev 클러스터 port-forward, <code>.wslconfig</code> memory 8GiB+</td></tr>
 <tr><td>SonarQube Cloud 5만 줄 한도</td><td>분석 실패 · 플랜 한도 초과 안내</td><td>생성 코드 · 빌드 산출물은 <code>sonar.exclusions</code>, 넘으면 중단(바인딩 규칙 · gitleaks · sanitizer는 그대로 유지)</td></tr>
 <tr><td>옛 블로그 코드</td><td>Boot 2/3 · Keycloak 구버전 예제가 동작 안 함</td><td>17장 Boot 4 변경점, 공식 문서 우선 (Keycloak Admin API 경로 · 어댑터 폐지 주의)</td></tr>

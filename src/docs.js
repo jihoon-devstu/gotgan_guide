@@ -19,7 +19,7 @@ export const DOCS = [
     name: '스펙 상세',
     question: '무엇을',
     summary: '요구사항 · 파트별 스펙 · 파일 구조',
-    points: ['최종 아키텍처', '파트별 스펙 · 전체 파일 역할', '도메인별 요구사항 155건(제외 14 포함) · 우선순위'],
+    points: ['최종 아키텍처', '파트별 스펙 · 전체 파일 역할', '도메인별 요구사항 155건(제외 15 포함) · 우선순위'],
     scope: 'doc-s',
     raw: specRaw,
     enhance: enhanceSpec,

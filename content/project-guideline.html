@@ -145,7 +145,7 @@ svg .arrowhead2{fill:var(--accent)}
 <header class="hero">
   <h1>곳간(GOTGAN) 스마트스토어형 오픈마켓<br>MSA 프로젝트 사전 가이드라인</h1>
   <p>3인 · 6주 · 첫 MSA/AWS 프로젝트의 아키텍처 결정과 작업 계획. 학습 자료(<code>eks-msa-observability-cicd-guide.html</code>)와 목업(<code>MockupPage/</code>)을 바탕으로, 1차 멘토링과 팀 회의에서 확정한 내용을 기준으로 정리했습니다.</p>
-  <p>작성 2026-10-03 · 개정 2026-10-12 (1차 멘토링 · 팀 회의 반영)</p>
+  <p>작성 2026-10-03 · 개정 2026-10-12 (1차 멘토링 · 팀 회의 반영) · 최신화 2026-11-10 (실제 배포 · 인프라 · 코드 기준)</p>
   <div class="chips">
     <span class="chip">Java 21 · Spring Boot 4.1</span><span class="chip">Spring Cloud Gateway</span><span class="chip">Keycloak</span><span class="chip">JPA · QueryDSL</span><span class="chip">Resilience4j</span>
     <span class="chip">React · Tailwind 4 · Zustand · TanStack Query/Table</span>
@@ -3769,8 +3769,8 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><th>등급</th><th>기능</th></tr>
 <tr><td><span class="tag must">Must</span></td><td>자체 로그인 · 가입(Keycloak, 역할 3종) · 입점 신청(서류) · 승인 · 반려 · 판매자 전환 · 카테고리(product) · 수수료(settlement) · 상품 CRUD(옵션 · 재고) · 목록 · 상세 · QueryDSL 검색 · 장바구니 · 주문 · 포트원 테스트 결제 Saga(검증 · 자동 취소 · 결제 대기 만료) · 발주확인 · 송장 수기 · 배송완료(status) · 구매확정(스케줄러) · <b>취소 · 반품 · 교환(status)</b> · <b>리뷰(사진 · 별점)</b> · 정산 집계 · 지급 · 판매자 · 관리자 대시보드(조합) · 헬스 체크 대시보드 · 장애 격리 · 무중단 배포 시연</td></tr>
 <tr><td><span class="tag should">Should</span></td><td>포인트 적립 · 사용(5%) · 회원등급 · 상품문의 · 답변 · 리뷰 관리(판매자 검토 요청 · 관리자 블라인드) · 보완요청 · 자동 반려 · 스토어 정지/폐점 → 상품 숨김 · 지급 보류 · 알림 메일 Lambda · 정산 명세서 Lambda · SonarQube Cloud · 배송지 관리</td></tr>
-<tr><td><span class="tag could">Could</span></td><td>FAQ 관리자 편집 · 로그 아카이브 Lambda · <code>blacklist</code> 즉시 로그아웃 · Outbox · 속도 제한(10/27 추가 기능 — 이경석) · ArgoCD 롤백 시연 · 10/27 추가 기능(실시간 알림 센터 · 1:1 채팅 · CSP · DOMPurify · 업로드 검사 · 코드 분할 · 멱등 키 · Grafana 에러 알림) · API HTTPS(10/20 Route 53 · ACM으로 적용, 05장)</td></tr>
-<tr><td><span class="tag wont">Won't</span></td><td>찜 · 쿠폰 · 비회원 구매(TODO) · 오토스케일링 · 파티셔닝 · CQRS/캐시 · Elasticsearch · NL2SQL · 썸네일 Lambda · 택배사 연동 · 실결제 · 소셜 로그인 · Cognito · 모바일 앱</td></tr>
+<tr><td><span class="tag could">Could</span></td><td>FAQ 관리자 편집 · 로그 아카이브 Lambda · <code>blacklist</code> 즉시 로그아웃 · Outbox · 속도 제한(10/27 추가 기능 — 이경석) · ArgoCD 롤백 시연 · 10/27 추가 기능(실시간 알림 센터 · 1:1 채팅 · CSP · DOMPurify · 업로드 검사 · 코드 분할 · 멱등 키 · Grafana 에러 알림) · API HTTPS(10/20 Route 53 · ACM으로 적용, 05장) · 소셜 로그인(구글 · 카카오 · 네이버 — 구현됨, 08장)</td></tr>
+<tr><td><span class="tag wont">Won't</span></td><td>찜 · 쿠폰 · 비회원 구매(TODO) · 오토스케일링 · 파티셔닝 · CQRS/캐시 · Elasticsearch · NL2SQL · 썸네일 Lambda · 택배사 연동 · 실결제 · Cognito · 모바일 앱</td></tr>
 </table></div>
 
 <h3>주차별 계획 (담당자 기준)</h3>
@@ -3857,11 +3857,11 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>IAM · <b>IRSA</b></td><td>역할 · 신뢰 정책, ServiceAccount ↔ IAM 역할, 최소 권한</td><td>서비스별 S3 · SNS · SQS 권한, Lambda 실행 역할</td></tr>
 <tr><td><b>SNS · SQS</b></td><td>팬아웃, 필터 정책, raw delivery, 가시성 타임아웃, DLQ(3회), 롱폴링</td><td>토픽 3개 · 구독자별 큐 (10장)</td></tr>
 <tr><td><b>GitHub Secrets · secrets-sync</b></td><td>GitHub Secrets를 워크플로에서 읽어 <code>kubectl create secret</code>으로 K8s Secret 생성, 파드는 <code>envFrom</code>으로 주입</td><td>DB 계정 · Keycloak 클라이언트 시크릿 · 포트원 키</td></tr>
-<tr><td><b>SES</b> · DynamoDB</td><td>샌드박스 · 이메일 검증 / PK · SK · TTL, 조건부 쓰기(멱등)</td><td><code>sesac-gojigi-notifications</code> · <code>sesac-gojigi-settlement-reports</code></td></tr>
-<tr><td><b>Lambda · Serverless Framework</b></td><td>SQS 트리거 · 배치 크기 · 부분 실패 응답, <code>serverless.yml</code>, 로그 · 재시도</td><td><code>order-notification</code> · <code>settlement-report</code> (11장)</td></tr>
+<tr><td><b>SES</b> · DynamoDB</td><td>샌드박스 · 이메일 검증 / PK · SK · TTL, 조건부 쓰기(멱등)</td><td><code>sesac-gojigi-notifications</code> · <code>sesac-gojigi-settlement-reports</code> · <code>sesac-gojigi-inbox</code>(알림 센터)</td></tr>
+<tr><td><b>Lambda · Serverless Framework</b></td><td>SQS 트리거 · 배치 크기 · 부분 실패 응답, <code>serverless.yml</code>, 로그 · 재시도</td><td><code>order-notification</code> · <code>settlement-report</code> · <code>upload-guard</code> (11장)</td></tr>
 <tr><td>정산 배치 · <b>ShedLock</b></td><td><code>@Scheduled</code> + ShedLock, 배치 멱등(UNIQUE 키), <code>long</code>(원) · <code>BigDecimal</code>(비율) · 반올림, ISO 주차 · Asia/Seoul</td><td>주간 집계 · 지급 · 보류, 카테고리 수수료(적용 시작일)</td></tr>
 <tr><td>admin 조합 · <b>Resilience4j</b></td><td><code>CompletableFuture</code> 병렬 호출, 서비스별 타임아웃 · 서킷 브레이커 · 폴백, 부분 응답(<code>unavailable</code>)</td><td>관리자 API 진입점 · 관리자 대시보드 (03 · 13장)</td></tr>
-<tr><td>SonarQube Cloud · 비용</td><td>Gradle <code>sonar</code> · 품질 게이트 · PR 코멘트 / 과금 자원(EKS · NAT · LB · EBS · EIP)</td><td>12장, 예산 초과 사고 방지</td></tr>
+<tr><td>SonarQube Cloud · 비용</td><td>SonarQube scan action · <code>sonar-project.properties</code> · 품질 게이트 · PR 코멘트 / 과금 자원(EKS · NAT · LB · EBS · EIP)</td><td>12장, 예산 초과 사고 방지</td></tr>
 <tr><td><b>포트원 V2</b></td><td>브라우저 SDK <code>requestPayment</code>, 서버 결제 조회 · 취소(부분) API, 금액 검증, 웹훅 서명 검증, sagaId · <code>portone_payment_id</code> 멱등(verify · 웹훅 중복 수신), V1(아임포트)과의 차이</td><td>payment-service (07장)</td></tr>
 </table></div>
 
@@ -3963,14 +3963,14 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>배송 · 취소/반품/교환 = order 안 status, 배송지 · 포인트 · 등급 = user</td><td>별도 서비스로 빼지 않음, 외부 택배 API 없음</td></tr>
 <tr><td>고객센터 별도 서비스 없음: 공개 상품문의 · 답변 = review(게시판 — 구현 여부 미확정, 이경석 여유 시), FAQ = 프론트 정적 데이터, 신고 = admin(10/26), 비공개 1:1 대화(스토어 톡 · 판매자 운영 상담 · 고객센터 상담) = chat-service(10/27)</td><td>리뷰와 구조 · 담당이 같음, FAQ는 거의 안 바뀜. 채팅은 공개 게시판과 목적이 달라 별개</td></tr>
 <tr><td rowspan="3">인증</td><td><b>Spring Cloud Gateway + Keycloak</b>. React 자체 로그인 · 가입 화면 → user-service가 Keycloak 대리 호출(password grant · Admin API)</td><td>멘토: 실무에서 Keycloak 많이 씀. 자체 화면 유지가 팀 결정, 1st-party 앱이라 Direct Grant 선택</td></tr>
-<tr><td>Keycloak은 클러스터 내부 전용, issuer <code>http://keycloak:8080/realms/gotgan</code> 고정</td><td>외부 노출 없이 issuer 불일치 문제를 원천 차단</td></tr>
+<tr><td>Keycloak은 클러스터 내부 전용, issuer <code>http://keycloak:8080/realms/gotgan</code> 고정 → 소셜 로그인 구현으로 <code>KC_HOSTNAME=https://api.gotgan.click</code> · issuer <code>https://api.gotgan.click/realms/gotgan</code> 로 변경(관리 콘솔은 계속 비공개, 08장)</td><td>외부 노출 없이 issuer 불일치 문제를 원천 차단</td></tr>
 <tr><td><b>Cognito 제외</b> (비교표만 08장에)</td><td>서버리스에 사용자 API가 없어짐</td></tr>
 <tr><td rowspan="3">보안 · 품질</td><td><b>SonarQube Cloud 무료 플랜</b> + GitHub Actions + main 대상 PR 코멘트. 5만 줄 넘으면 중단</td><td>AWS 별도 구축안(EC2 + PostgreSQL) 대비 비용 · 운영 0. 멘토: 정적 분석을 CI 앞단에</td></tr>
 <tr><td>SQL Injection = 파라미터 바인딩(문자열 이어 붙이기 금지), XSS = OWASP Java HTML Sanitizer</td><td>막는 대상이 다르므로 둘 다 적용</td></tr>
 <tr><td>Secrets Manager + KMS + ESO, gitleaks, 로그 저장소 외부 미노출 → <b>10/13 GitHub Secrets 단일 소스로 변경</b>(아래 2차 회의 2)</td><td>멘토: 코드 · 주석 · 로그 · 히스토리 어디에도 키 금지, 로그 유출은 치명적</td></tr>
 <tr><td>서버리스</td><td><b>배치 · 로깅만</b>, 사용자 API 없음: 알림 메일 · 정산 명세서 · (Could) 로그 아카이브. <b>썸네일 Lambda 제외</b></td><td>멘토: 실무 MSA에선 거의 안 씀, 학습용이면 MSA와 엮지 말고 배치 · 로깅 쪽</td></tr>
 <tr><td rowspan="2">장애 격리 · 관측</td><td>모든 동기 호출에 <b>Resilience4j 표준</b>(타임아웃 · 서킷 브레이커 · 폴백)</td><td>멘토: 서비스 하나 죽어도 에러 메시지로 1차 처리</td></tr>
-<tr><td>헬스 체크 = <b>Grafana "System Status"</b>(State timeline · Stat), 관리자 화면 시스템 상태 페이지는 만들지 않음. CI/CD = Actions + ArgoCD, 관측성 = PLG + Zipkin</td><td>멘토: 초록불 화면 + 내렸다 올리면 자동 복구되는 모습. Grafana로 죽음 → 복구 · 롤링 배포가 시간축에 보임</td></tr>
+<tr><td>헬스 체크 = <b>Grafana "System Status"</b>(State timeline · Stat), 관리자 화면 시스템 상태 페이지는 만들지 않음(→ 11/7 F-1 장애 시연으로 관리자 <code>/admin/system</code> 추가, 13장). CI/CD = Actions + ArgoCD, 관측성 = PLG + Zipkin</td><td>멘토: 초록불 화면 + 내렸다 올리면 자동 복구되는 모습. Grafana로 죽음 → 복구 · 롤링 배포가 시간축에 보임</td></tr>
 <tr><td rowspan="2">데이터</td><td>MySQL 1대 + 서비스별 스키마 · 계정 유지(PostgreSQL 미전환). Redis · DynamoDB는 쓸 곳에만</td><td>멘토: 진행해도 됨. MSA 근거는 "DDD로 테이블을 치밀하게 쪼갬"</td></tr>
 <tr><td>검색은 <b>JPA + QueryDSL</b>만</td><td>Elasticsearch는 범위가 크게 늘어남</td></tr>
 <tr><td>제외</td><td><b>오토스케일링(HPA) · 이력 파티셔닝 · 고급 인덱스 · CQRS 읽기 테이블 · 캐시 · Elasticsearch · NL2SQL · 썸네일 · Cognito</b> → 20장 "실무에서는"으로 설명만</td><td>예매 · 경매 같은 동시성 폭주 도메인이 아님, 실무 기준은 이번 기간에 과함</td></tr>
@@ -4009,7 +4009,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>1</td><td><b><code>app</code> 노드 그룹 t3.large × 2 → t3.xlarge × 2</b>(4 vCPU · 16GiB, 노드당 파드 58, min 0 · max 3, 프라이빗 2a · 2c, 라벨 <code>tier=app</code>). <code>db</code> t3.medium × 1 · 작업용 EC2 t3.small은 그대로. app 할당 가능 약 30Gi · 파드 116 → requests(약 9.8Gi) 여유 약 20Gi, 실사용 기준 여유 약 17Gi</td><td>requests 기준으로는 t3.large × 2(할당 약 14.6Gi)에 여유 4Gi처럼 보이지만, <b>실사용</b>은 JVM 서비스 10개(gateway 2 + 업무 8) 각 약 650~700Mi · Keycloak 약 1Gi · 관측성 약 2Gi · ArgoCD 약 1Gi · 시스템 약 1.2Gi → 약 12~13Gi라 실제 여유 1~2Gi뿐</td></tr>
 <tr><td>2</td><td>08:00 기동 부하 · 장애 시연 기준으로 사양 결정</td><td>매일 08:00 클러스터 생성 직후 JVM 11개가 동시에 기동 → t3 CPU 크레딧 소모가 큼(t3.large 4 vCPU 합계 · 기준 성능 30% → t3.xlarge 8 vCPU 합계 · 기준 성능 40%). <b>노드 1대 장애 시연(N-1)</b>: t3.large 1대(약 7.3Gi)로는 실사용 12~13Gi를 받을 수 없고, t3.xlarge 1대(약 15Gi)는 수용</td></tr>
 <tr><td>3</td><td>대안 t3.large × 3은 채택하지 않음 — 2대 구성 유지, 사양만 올림</td><td>t3.large × 3은 시간당 $0.312로 더 싸지만 노드가 늘고 노드당 CPU · 메모리는 그대로라 버스트 · N-1 여유가 작음</td></tr>
-<tr><td>4</td><td>비용 재계산: 6주 · 매일 14시간 합계 <b>약 $320 → 약 $440</b>(app 노드 약 $125 → 약 $245), 24시간 상시였다면 약 $470 → 약 $690. 22:00 이후 수동 up 시간당 약 $0.57. AWS Budgets 월 예산 예시 $350</td><td>04장 비용 표 · 12장 일일 스케줄 표에 반영</td></tr>
+<tr><td>4</td><td>비용 재계산: 6주 · 매일 14시간 합계 <b>약 $320 → 약 $440</b>(app 노드 약 $125 → 약 $245), 24시간 상시였다면 약 $470 → 약 $690. 22:00 이후 수동 apply 시간당 약 $0.57. AWS Budgets 월 예산 예시 $350(→ 연계 계정이라 Budgets 사용 불가 확인, 04장)</td><td>04장 비용 표 · 12장 일일 스케줄 표에 반영</td></tr>
 </table></div>
 
 <h3>10/15 팀 3인 체제 전환</h3>
@@ -4023,11 +4023,11 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <h3>10/20 API 공개 주소 전환</h3>
 <div class="tbl"><table>
 <tr><th>#</th><th>결정</th><th>이유 · 근거</th></tr>
-<tr><td>1</td><td><b>API 공개 주소 DuckDNS → Route 53 · ACM(<code>api.gotgan.click</code>), gateway NLB 443 TLS</b> — 05장 재작성. 도메인 <code>gotgan.click</code> Route 53 등록, <code>app/dns.tf</code>(A 레코드 → EIP 2개 · ACM DNS 검증), Helm gateway Service <code>port: 443</code> + ssl-cert · ssl-ports 어노테이션, <code>vercel.json</code> 목적지 https. DuckDNS 스크립트 · bootstrap 단계 · <code>DUCKDNS_TOKEN</code> · <code>DUCKDNS_DOMAIN</code>은 삭제 예정</td><td>Vercel ↔ AWS 평문 구간 해소, 소셜 로그인(USR-12)용 Keycloak HTTPS 공개 주소 확보, A 레코드가 EIP 2개를 모두 가리킴. 비용 연 $3 + 월 $0.50</td></tr>
+<tr><td>1</td><td><b>API 공개 주소 DuckDNS → Route 53 · ACM(<code>api.gotgan.click</code>), gateway NLB 443 TLS</b> — 05장 재작성. 도메인 <code>gotgan.click</code> Route 53 등록, <code>app/dns.tf</code>(A 레코드 → EIP 2개 · ACM DNS 검증), Helm gateway Service <code>port: 443</code> + ssl-cert · ssl-ports 어노테이션, <code>vercel.json</code> 목적지 https. DuckDNS 스크립트 · bootstrap 단계 · <code>DUCKDNS_TOKEN</code> · <code>DUCKDNS_DOMAIN</code>은 삭제(10/20, 05장)</td><td>Vercel ↔ AWS 평문 구간 해소, 소셜 로그인(USR-12)용 Keycloak HTTPS 공개 주소 확보, A 레코드가 EIP 2개를 모두 가리킴. 비용 연 $3 + 월 $0.50</td></tr>
 </table></div>
 
 <div class="box rec"><b class="t">ADR로 남기기</b>
-위 결정 중 아키텍처에 영향을 주는 것(서비스 9개 분할(10/27 chat-service 추가) · admin BFF(10/26 admindb 신고 예외) · 카테고리 위치 · Keycloak 대리 로그인 · 대시보드 부분 응답 · Resilience4j 표준 · 서버리스 범위 · 제외 목록 · 저장소 3분할 · GitHub Secrets 단일 소스 · 인프라 일일 스케줄 · 장바구니 MySQL 원본 + Redis 캐시 · 3티어 · db 노드 분리 · NetworkPolicy)은 <code>gotgan-config/docs/adr/0001-service-split.md</code>처럼 <b>ADR</b>(결정 · 배경 · 검토한 대안 · 결과)로 저장소에 남기세요. 결정이 바뀌면 기존 ADR을 고치지 말고 새 ADR에서 "대체함"으로 연결합니다.</div>
+위 결정 중 아키텍처에 영향을 주는 것(서비스 9개 분할(10/27 chat-service 추가) · admin BFF(10/26 admindb 신고 예외) · 카테고리 위치 · Keycloak 대리 로그인 · 대시보드 부분 응답 · Resilience4j 표준 · 서버리스 범위 · 제외 목록 · 저장소 3분할 · GitHub Secrets 단일 소스 · 인프라 일일 스케줄 · 장바구니 MySQL 원본 + Redis 캐시 · 3티어 · db 노드 분리 · NetworkPolicy)은 <code>gotgan-config/docs/adr/0001-team-decisions-2026-10.md</code>처럼 <b>ADR</b>(결정 · 배경 · 검토한 대안 · 결과)로 저장소에 남기세요. 결정이 바뀌면 기존 ADR을 고치지 말고 새 ADR에서 "대체함"으로 연결합니다.</div>
 </section>
 
 <!-- ============================================================ 16 -->
@@ -4040,11 +4040,11 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>이경석 업무 집중(CI/CD · Keycloak · user · gateway + order · review)</td><td>인증 · 배포 파이프라인과 구매 흐름이 한 사람에게 몰려 order Saga · 리뷰가 늦어짐</td><td>우선순위 고정(user · gateway 인증 → order Saga → review → 상품문의(Should)), 구매 흐름 PR 공동 리뷰어 = 구지훈(order Saga · payment 계약 먼저 확정), 연동 지점 공동 리뷰(재고 = 박지연), 범위 조정은 MoSCoW(Could 먼저 제외), 1주차에 서비스 템플릿 · Saga 골격 선행</td></tr>
 <tr><td>payment 분리로 Saga 단계 증가</td><td>중간 단계 실패 · 타임아웃 후 재고 · 포인트가 묶인 채 남음</td><td><code>saga_instance</code>에 단계 기록, sagaId 멱등, 역순 보상, 멈춘 Saga 복구 스케줄러, Resilience4j 타임아웃 → "결과 모름"은 조회 후 결정 (06장)</td></tr>
 <tr><td>동기 호출 장애 전파</td><td>서비스 하나가 죽으면 대시보드 · admin 화면 전체가 500</td><td>Resilience4j(타임아웃 · 서킷 브레이커 · 폴백) 표준, 대시보드는 실패 영역만 <code>null</code> + <code>unavailable</code> 부분 응답</td></tr>
-<tr><td>Keycloak issuer 불일치</td><td>모든 요청 401, 로그에 <code>iss</code> claim 오류</td><td><code>KC_HOSTNAME=http://keycloak:8080</code> 고정, user-service · gateway 모두 클러스터 내부 주소 사용, 브라우저는 Keycloak을 직접 부르지 않음 (08장)</td></tr>
+<tr><td>Keycloak issuer 불일치</td><td>모든 요청 401, 로그에 <code>iss</code> claim 오류</td><td><code>KC_HOSTNAME=https://api.gotgan.click</code> 고정 + gateway <code>KEYCLOAK_ISSUER</code> 같은 값, 서버 간 호출은 <code>KC_HOSTNAME_BACKCHANNEL_DYNAMIC</code>으로 내부 주소 (08장)</td></tr>
 <tr><td>Keycloak realm 설정 유실</td><td>재설치 · DB 초기화 후 클라이언트 · 매퍼 · 역할이 사라짐</td><td><b>realm export(JSON)를 Git으로 관리</b> + 기동 시 import(매일 아침 bootstrap이 자동), 클라이언트 시크릿은 realm JSON에 <code>${GOTGAN_BACKEND_CLIENT_SECRET}</code> 자리표시자 + GitHub Secret, 콘솔에서 바꾼 설정은 바로 export(다음 날 아침이면 사라짐)</td></tr>
 <tr><td>무중단 배포 실패</td><td>롤링 배포 중 502 · 5xx 발생</td><td>readinessProbe(<code>/actuator/health/readiness</code>), <code>maxUnavailable: 0</code> · <code>maxSurge: 1</code>, <b>preStop</b> sleep + graceful shutdown, gateway 2개, System Status로 5xx 0 확인</td></tr>
 <tr><td>팀원 클러스터 접근 불가</td><td><code>error: You must be logged in to the server (Unauthorized)</code></td><td>04장 <code>access_entries</code>에 팀원 ARN 등록</td></tr>
-<tr><td>파드 Pending</td><td><code>Too many pods</code>, <code>Insufficient memory</code></td><td>app t3.xlarge × 2(할당 약 30Gi · 파드 116 — 파드 약 35 · requests 약 9.8Gi, requests 여유 약 20Gi · 실사용 기준 여유 약 17Gi) + db t3.medium × 1, requests 현실화(512Mi), ArgoCD dex · notifications 0개, 시연 때만 app 노드 3대. MySQL · Redis가 Pending이면 db 노드의 테인트 · toleration · 2a 서브넷 확인</td></tr>
+<tr><td>파드 Pending</td><td><code>Too many pods</code>, <code>Insufficient memory</code></td><td>app t3.xlarge × 2(할당 약 28.9Gi · 파드 116 — 11/10 파드 43 · requests 약 11.6Gi, requests 여유 약 17Gi) + db t3.medium × 1, requests 현실화(512Mi), 시연 때만 app 노드 3대. 노드 1대 장애 땐 CPU requests 합(약 4.23 vCPU)이 남은 노드(3.92)를 넘어 예비 파드 일부 Pending(11/6 drain 실측) — 남은 파드로 구매 경로 유지. MySQL · Redis가 Pending이면 db 노드의 테인트 · toleration · 2a 서브넷 확인</td></tr>
 <tr><td>db 노드 1대 · AZ 2a 고정</td><td>2a 장애 또는 db 노드 다운 시 MySQL · Redis 전부 불가 → 모든 서비스가 DB 오류(읽기 전용 화면만 부분 동작)</td><td><b>수용</b>(10/13 3차). EBS 볼륨(gp3 디스크)이 2a에 묶여 다른 AZ로 옮길 수 없음. 노드 그룹 max 1이라 자동 교체(관리형 노드 그룹 재생성)는 되지만 AZ 자체 장애는 못 막음. 멀티 AZ DB(RDS Multi-AZ)는 20장. 시연은 "서비스 하나 다운" · "Redis 다운"까지만, DB 다운은 시연하지 않음</td></tr>
 <tr><td>NetworkPolicy로 DB 접근 차단</td><td>파드가 MySQL · Redis에 연결 못 함(타임아웃), Keycloak 기동 실패</td><td>DB에 닿는 파드는 전부 라벨 <code>tier: backend</code>(Helm Deployment 기본 · Keycloak 포함) + 네임스페이스 sesac-gojigi. 라벨 빠진 파드는 <code>kubectl get pod -L tier</code>로 확인. 디버그용 <code>mysql</code> 클라이언트 파드도 같은 라벨을 붙여 띄움</td></tr>
 <tr><td>JVM OOMKilled</td><td>파드 재시작 반복, <code>OOMKilled</code></td><td>힙 상한 33%(admin 41%, Helm env) · limits 768Mi — 힙 사용량이 아니라 <b>커밋이 상한까지 커질 때</b>를 기준으로 계산. CPU limit은 두지 않거나 넉넉히(기동 시 스로틀링)</td></tr>
@@ -4060,13 +4060,13 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>옛 블로그 코드</td><td>Boot 2/3 · Keycloak 구버전 예제가 동작 안 함</td><td>17장 Boot 4 변경점, 공식 문서 우선 (Keycloak Admin API 경로 · 어댑터 폐지 주의)</td></tr>
 <tr><td>통합이 늦음</td><td>4주차에 처음 연결, API 불일치</td><td>1주차 API · 이벤트 계약, 매주 금요일 E2E, MSW 픽스처를 실제 응답과 비교</td></tr>
 <tr><td>스케줄러 중복 실행</td><td>정산 두 번 집계</td><td>ShedLock + UNIQUE 키 멱등</td></tr>
-<tr><td>이벤트 중복 · 유실</td><td>메일 두 번, 포인트 두 번 적립, 정산 누락</td><td>소비자 멱등 테이블(<code>processed_event</code>), DLQ 모니터링, (Could) Outbox</td></tr>
+<tr><td>이벤트 중복 · 유실</td><td>메일 두 번, 포인트 두 번 적립, 정산 누락</td><td>소비자 멱등 테이블(<code>processed_event</code>), DLQ 모니터링(CloudWatch 알람 · Lambda · DLQ 대시보드), Outbox(order · store · settlement 구현, 10장)</td></tr>
 <tr><td>SES 샌드박스</td><td>메일이 안 감 (<code>MessageRejected</code>)</td><td>팀원 메일 검증, 테스트 계정 이메일을 검증된 주소로</td></tr>
 <tr><td>XSS</td><td>리뷰 · 문의 본문에 스크립트 삽입</td><td>저장 전 OWASP Java HTML Sanitizer, 프론트는 HTML 직접 삽입 지양</td></tr>
 <tr><td>시크릿 커밋</td><td>GitHub에 키 노출 → 계정 도용 · 과금</td><td>gitleaks, <code>.gitignore</code>, OIDC로 장기 키 자체를 없앰. 노출 시 즉시 키 비활성화</td></tr>
-<tr><td>삭제 순서 실수</td><td>destroy가 멈추거나 NLB · EBS가 남아 과금</td><td>매일 22:00은 <code>infra-schedule</code> down이 ArgoCD 앱 · Service(LoadBalancer) · PVC 삭제 → cluster destroy 순으로 처리. 발표 후 전체 삭제는 down 실행 후 app → cicd → ecr → vpc 순(12장)</td></tr>
-<tr><td>매일 재생성 실패</td><td>아침 08:00 apply · bootstrap이 실패해 클러스터가 없거나 반만 올라옴(파드 Pending · ArgoCD 앱 없음)</td><td>Actions 실패 알림(Discord 웹훅) 확인 → <code>infra-schedule</code>(up) 또는 <code>bootstrap</code>을 <code>workflow_dispatch</code>로 수동 재실행(둘 다 멱등 — <code>kubectl apply</code> · <code>create --dry-run | apply</code>). Terraform 잠금 · 상태 오류는 구지훈이 로컬에서 <code>terraform apply cluster/</code>. 전날 down이 실패해 클러스터가 남아 있으면 up이 "이미 있음"으로 끝나므로 bootstrap만 다시</td></tr>
-<tr><td>Redis 장애</td><td>Redis 파드 다운 · 타임아웃, <code>redisCart</code> 서킷 OPEN</td><td>장바구니는 MySQL <code>cart_item</code> 원본으로 폴백해 정상(응답 지연만, 09장). <code>blacklist</code>(Could)는 Redis 전용이라 그 사이 즉시 무효화만 비활성. Redis 복구 후 서킷이 HALF_OPEN → CLOSED로 돌아오는지 Grafana에서 확인</td></tr>
+<tr><td>삭제 순서 실수</td><td>destroy가 멈추거나 NLB · EBS가 남아 과금</td><td>매일 22:00은 <code>infra-schedule</code> destroy가 ArgoCD 앱 · Service(LoadBalancer) · PVC 삭제 → NLB 제거 대기 → cluster destroy 순으로 처리. 발표 후 전체 삭제는 destroy 실행 후 app → cicd → ecr → vpc 순(12장)</td></tr>
+<tr><td>매일 재생성 실패</td><td>아침 08:00 apply · bootstrap이 실패해 클러스터가 없거나 반만 올라옴(파드 Pending · ArgoCD 앱 없음)</td><td>실패 알림(<code>notify-failure</code> → SNS <code>sesac-gojigi-alerts</code> 메일) 확인 → <code>infra-schedule</code>(apply) 또는 <code>bootstrap</code>을 <code>workflow_dispatch</code>로 수동 재실행(둘 다 멱등 — <code>kubectl apply</code> · <code>create --dry-run | apply</code>). Terraform 잠금 · 상태 오류는 구지훈이 로컬에서 <code>terraform apply cluster/</code>. 전날 destroy가 실패해 클러스터가 남아 있으면 apply가 "이미 있음"으로 끝나므로 bootstrap만 다시</td></tr>
+<tr><td>Redis 장애</td><td>Redis 파드 다운 · 타임아웃, <code>redisCart</code> 서킷 OPEN</td><td>장바구니는 MySQL <code>cart_item</code> 원본으로 폴백해 정상(응답 지연만, 09장). 탈퇴 · 정지 회원 차단 목록(<code>blocked:user:</code>)은 Redis 전용이라 그 사이 확인을 건너뜀(gateway fail-open — 1차 방어선 Keycloak 계정 삭제 · 정지는 그대로). Redis 복구 후 서킷이 HALF_OPEN → CLOSED로 돌아오는지 Grafana에서 확인</td></tr>
 <tr><td>레포 간 토큰 만료</td><td>backend CI의 <code>bump-tag</code> 단계가 403 → 이미지는 올라갔는데 배포가 안 됨</td><td><code>CONFIG_REPO_TOKEN</code>(fine-grained PAT, gotgan-config Contents: write만)의 만료일을 11/20 이후로 두고 16장 일정에 기록, 만료 · 소유자 변경 시 이경석이 재발급 후 gotgan-backend Secret 갱신. 급하면 gotgan-config <code>values.yaml</code>을 손으로 커밋</td></tr>
 <tr><td>시크릿 값 불일치</td><td>GitHub Secret은 바꿨는데 파드가 옛 값 사용 · 로그인 실패</td><td>값 변경 → <code>secrets-sync</code> 수동 실행 → 해당 Deployment <code>rollout restart</code>. 다음 날 아침 bootstrap부터는 자동</td></tr>
 <tr><td>시간대 버그</td><td>구매확정 · 정산 주차가 하루 어긋남</td><td>DB · JDBC · JVM 모두 <code>Asia/Seoul</code> 고정(컨테이너 기본은 UTC라 <code>TZ</code> 누락 주의), 테스트로 경계(일요일 23:59) 확인</td></tr>
@@ -4116,7 +4116,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>이미지 서명 · 스캔 (cosign, Trivy, SBOM)</td><td>(Trivy 스캔은 여유 시 CI에 추가 추천)</td><td>공급망 보안: 서명된 이미지만 배포</td></tr>
 <tr><td>Atlantis / Terraform Cloud, Infracost</td><td>스케줄 워크플로(OIDC 역할) 또는 구지훈이 apply, PR은 plan 코멘트까지</td><td>PR에서 plan 확인 → 승인 후 apply, 비용 변화 PR 코멘트</td></tr>
 <tr><td rowspan="2">테스트</td><td>계약 테스트 (Pact, Spring Cloud Contract)</td><td>서비스 수 대비 기간 부족</td><td>소비자가 기대하는 API 계약을 제공자 CI에서 검증 → 통합 전에 깨짐 발견</td></tr>
-<tr><td>카오스 엔지니어링 (Chaos Mesh, AWS FIS)</td><td>(수동 파드 삭제 · 레플리카 0으로 대체)</td><td>장애를 일부러 주입해 복원력 검증</td></tr>
+<tr><td>카오스 엔지니어링 (Chaos Mesh, AWS FIS)</td><td>(관리자 화면 F-1 장애 시연 — 허용 목록 서비스의 파드 즉시 삭제 · 1개씩 시나리오로 대체, 13장)</td><td>장애를 일부러 주입해 복원력 검증</td></tr>
 </table></div>
 </section>
 
@@ -4135,8 +4135,8 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>Transactional Outbox</td><td>업무 데이터와 이벤트를 같은 DB 트랜잭션으로 기록한 뒤 별도로 발행 → 유실 방지</td></tr>
 <tr><td>DLQ (Dead Letter Queue)</td><td>여러 번 처리에 실패한 메시지를 따로 모아 두는 큐</td></tr>
 <tr><td>스냅샷 (비정규화)</td><td>다른 서비스의 값을 그 시점 그대로 복사해 저장 (주문 시 상품명 · 가격)</td></tr>
-<tr><td>포인트 배분</td><td>주문 전체에 쓴 · 적립된 포인트를 상품주문별 금액 비율로 나눠 기록하는 것. 일부만 취소 · 반품해도 그 몫만 환원 · 회수</td></tr>
-<tr><td>Keycloak</td><td>오픈소스 인증 서버(IdP). 계정 · 역할 · 토큰 발급을 맡음. 이 프로젝트에서는 클러스터 내부 전용</td></tr>
+<tr><td>포인트 배분</td><td>주문 전체에 쓴 · 적립된 포인트를 상품주문별 금액 비율로 나눠 기록하는 것. 일부만 취소 · 반품해도 그 몫만 환원(적립은 구매확정 때라 회수 없음, 10/29)</td></tr>
+<tr><td>Keycloak</td><td>오픈소스 인증 서버(IdP). 계정 · 역할 · 토큰 발급을 맡음. 이 프로젝트에서는 관리 콘솔은 클러스터 내부 전용, 소셜 로그인 화면(<code>/realms/gotgan/**</code>)만 gateway 경유로 공개</td></tr>
 <tr><td>IdP (Identity Provider)</td><td>사용자를 인증하고 토큰을 발급하는 주체. 서비스는 IdP가 서명한 토큰만 검증</td></tr>
 <tr><td>Realm</td><td>Keycloak 안의 독립된 사용자 · 클라이언트 · 역할 묶음. 이 프로젝트는 <code>gotgan</code> 하나</td></tr>
 <tr><td>Direct Grant (password grant)</td><td>아이디 · 비밀번호를 받아 토큰 엔드포인트에서 바로 토큰을 받는 방식. OAuth 2.1에서는 비권장이지만 자체 로그인 화면을 쓰는 1st-party 앱이라 선택, 토큰은 user-service만 다룸</td></tr>

@@ -165,17 +165,17 @@ svg .arrowhead2{fill:var(--accent)}
 <tr><td>서비스 구성</td><td><b>업무 기능(데이터 소유권) 기준으로 Spring 10개 + Keycloak.</b> gateway + 업무 9개(user · store · product · order · payment · review · settlement · admin · chat — chat 은 10/27 추가). <b>admin은 조합 계층</b> — 각 서비스 <code>/internal/**</code>을 호출해 조합하는 관리자용 계층, 자기 DB는 신고 · 조치 이력(admindb, ADR-0001 예외 10/26)과 실시간 알림 센터(10/27)만. <b>카테고리(상위/하위)는 product</b>, 카테고리별 수수료는 settlement. 상품문의 · 답변은 review, FAQ는 프론트 정적 데이터.</td><td>03</td></tr>
 <tr><td>업무 분장</td><td><b>구지훈</b> AWS IaC · settlement · admin · payment / <b>이경석</b> CI/CD · Keycloak · user · 게이트웨이 인증 · order · review / <b>박지연</b> 로깅 · 관측성 · 헬스 체크 · product · store. 발표도 각자 담당 영역을 직접 설명.</td><td>03</td></tr>
 <tr><td>대시보드</td><td>판매자 대시보드 = store, 관리자 대시보드 = admin 안의 <code>dashboard</code> 패키지. 각 서비스의 <code>/internal/stats/**</code>를 <b>병렬 호출해 DTO 하나로 조합</b>하고, 한 서비스가 죽으면 그 영역만 <code>null</code> + <code>unavailable</code>로 <b>부분 응답(200)</b>. 집계 계산은 데이터 주인 서비스가.</td><td>03 · 06</td></tr>
-<tr><td>EC2 크기</td><td>3티어 — 백 티어 <b><code>app</code> t3.xlarge × 2</b>(min 0 · max 3, 시연 때 3대) + DB 티어 <b><code>db</code> t3.medium × 1</b>(2a 고정, MySQL · Redis만, NetworkPolicy로 백 티어만 접근). OS는 AL2023. app 파드 약 35개 · requests 약 9.8Gi지만 JVM 실사용은 약 12~13Gi라 t3.large × 2로는 여유 1~2Gi · 노드 1대 장애(N-1) 시연 불가 → 10/14 t3.xlarge × 2로 조정(할당 약 30Gi).</td><td>04</td></tr>
+<tr><td>EC2 크기</td><td>3티어 — 백 티어 <b><code>app</code> t3.xlarge × 2</b>(min 0 · max 3, 시연 때 3대) + DB 티어 <b><code>db</code> t3.medium × 1</b>(2a 고정, MySQL · Redis만, NetworkPolicy로 백 티어만 접근). OS는 AL2023. app 파드 약 35개 · requests 약 9.8Gi지만 JVM 실사용은 약 12~13Gi라 t3.large × 2로는 여유 1~2Gi · 노드 1대 장애(N-1) 시연 불가 → 10/14 t3.xlarge × 2로 조정(할당 약 29Gi). 11/5 구매 경로 이중화(레플리카 2) 뒤 app 파드 43개 · requests 약 11.6Gi(11/10 실측), HPA 없음.</td><td>04</td></tr>
 <tr><td>서빙 도메인</td><td>프론트는 <b>Vercel</b>(기본 HTTPS · PR 미리보기), API는 <b>Route 53</b> 도메인 <code>https://api.gotgan.click</code> → NLB <b>고정 IP(EIP)</b> · <b>ACM</b> 인증서(NLB 443 TLS). Vercel rewrites로 <code>/api/*</code>를 API로 넘겨 브라우저에서는 같은 출처로 보이게.</td><td>05</td></tr>
 <tr><td>서비스별 DB · 장애 격리</td><td>MySQL <b>물리 1대 + 스키마 10개</b>(업무 9 + <code>keycloakdb</code> — admindb 10/26 · chatdb 10/27 추가) · 계정도 서비스별. 다른 서비스 테이블 FK · JOIN 금지, ID만 참조 · 스냅샷 복사, 스키마 변경은 서비스마다 <b>Flyway</b>. 장바구니 원본도 orderdb <code>cart_item</code>(Redis는 캐시). 클러스터를 매일 다시 만들므로 시연 데이터는 Flyway 시드로 복원. 모든 동기 호출은 <b>Resilience4j</b>(타임아웃 · 서킷 브레이커 · 폴백)로 "서비스 하나를 죽여도 에러 메시지로 1차 처리".</td><td>06</td></tr>
-<tr><td>Saga · 포인트</td><td>order가 오케스트레이터. <b>주문 생성</b> = user(포인트 사용 차감) → product(재고 예약) → payment(결제 준비 · 포트원 검증), 실패 시 역순 보상. <b>결제 후 취소 · 반품</b> = payment 포트원 취소 → product 재고 복원 → user 포인트 환원 · 회수. 포인트는 실결제금액의 <b>5% 적립</b>(<code>OrderPaid</code> 이벤트) · 다음 결제에서 사용.</td><td>06</td></tr>
+<tr><td>Saga · 포인트</td><td>order가 오케스트레이터. <b>주문 생성</b> = user(포인트 사용 차감) → product(재고 예약) → payment(결제 준비 · 포트원 검증), 실패 시 역순 보상. <b>결제 후 취소 · 반품</b> = payment 포트원 취소 → product 재고 복원 → user 사용 포인트 환원. 포인트는 상품주문 실결제 배분액의 <b>5%를 구매확정 때 적립</b>(<code>OrderItemConfirmed</code> 이벤트, 10/29 — 취소 · 반품은 구매확정 전에만 되므로 회수 없음) · 다음 결제에서 사용.</td><td>06</td></tr>
 <tr><td>결제</td><td><b>payment-service로 분리</b>, <b>포트원(PortOne) V2 테스트 채널</b>. 브라우저 SDK 결제창 → order의 <code>payment/confirm</code> → payment가 포트원 API로 금액 · 상태 검증 → 불일치 시 자동 취소. 브라우저는 payment를 직접 부르지 않음(웹훅 제외).</td><td>07</td></tr>
 <tr><td>인증 · 인가</td><td><b>Spring Cloud Gateway + Keycloak.</b> 로그인 · 가입은 우리 React 화면 → <b>user-service가 Keycloak을 대신 호출</b>(password grant · Admin API). Keycloak은 클러스터 내부 전용, 게이트웨이가 JWKS로 토큰 검증 후 사용자 헤더 주입. Cognito는 검토 후 제외.</td><td>08</td></tr>
 <tr><td>Redis · DynamoDB</td><td>Redis: <b>장바구니 캐시</b>(<code>cart:{userId}</code>) — <b>원본은 MySQL <code>orderdb.cart_item</code></b>, 쓰기는 MySQL 먼저 → Redis 갱신, 읽기는 Redis → 미스 · 장애 시 MySQL. Resilience4j <code>redisCart</code> 서킷 + 폴백으로 <b>Redis가 죽어도 장바구니 정상</b>, Redis는 AOF + PVC. 로그아웃 즉시 무효화 <code>blacklist:{jti}</code>는 Could(Redis 전용). 리프레시 토큰 · 상품 캐시 없음. DynamoDB: <b>Lambda가 쓰는 알림 · 명세서 발송 이력(멱등)</b>만.</td><td>09</td></tr>
 <tr><td>EDA · 스케줄러</td><td>서비스 간 "일어난 일 통보"는 <b>SNS → SQS(+DLQ)</b>, 토픽 3개(store · order · settlement). 이벤트: <code>StoreApproved</code> · <code>StoreStatusChanged</code> · <code>OrderPaid</code> · <code>OrderItemShipped</code> · <code>OrderItemConfirmed</code> · <code>OrderItemCancelled</code>/<code>Returned</code> · <code>SettlementPaid</code>. 스케줄러: 결제 대기 만료 · Saga 복구 · 자동 구매확정 · 주간 정산 · 보완요청 자동 반려.</td><td>10</td></tr>
-<tr><td>서버리스</td><td><b>배치 · 로깅만, 사용자 API 없음.</b> 알림 메일(SQS → Lambda → SES) · 정산 명세서(<code>SettlementPaid</code> → CSV → S3 · SES) · 로그 아카이브(매일 03:00, Could). 썸네일 Lambda는 제외.</td><td>11</td></tr>
+<tr><td>서버리스</td><td><b>배치 · 로깅만, 사용자 API 없음.</b> 알림 메일(SQS → Lambda → SES) · 정산 명세서(<code>SettlementPaid</code> → CSV → S3 · SES) · 로그 아카이브(매일 03:00, Could) · 업로드 검사(S3 업로드 → EventBridge → 형식 확인, 10/27). 썸네일 Lambda는 제외.</td><td>11</td></tr>
 <tr><td>CI/CD · 코드 품질</td><td><b>GitHub Actions + ArgoCD</b>(OIDC · 경로 필터 · GitOps), 프론트는 Vercel Git 연동. <b>SonarQube Cloud 무료 플랜</b>으로 main 대상 PR에 품질 게이트 · 코멘트. SQL Injection은 파라미터 바인딩, XSS는 HTML sanitizer. 시크릿은 <b>GitHub Secrets 단일 소스</b>(<code>secrets-sync</code> 워크플로가 K8s Secret 생성, Secrets Manager · KMS · ESO 없음). 인프라는 <b>매일 08:00 생성 · 22:00 삭제</b>(<code>infra-schedule</code> · <code>bootstrap</code> 워크플로, cluster/만 — 나머지는 상시).</td><td>12</td></tr>
-<tr><td>관측성 · 헬스 체크</td><td>PLG(Prometheus · Loki · Grafana) + Zipkin. <b>Grafana "System Status" 헬스 체크 대시보드</b>로 서비스별 초록/빨강 · 죽음 → 복구 · 롤링 배포를 시간축에 표시. 시연: 서비스 하나 다운 · 자동 복구 · 무중단 배포 · (가능하면) 롤백 · Saga 보상.</td><td>13</td></tr>
+<tr><td>관측성 · 헬스 체크</td><td>PLG(Prometheus · Loki · Grafana) + Zipkin. <b>Grafana "System Status" 헬스 체크 대시보드</b>로 서비스별 초록/빨강 · 죽음 → 복구 · 롤링 배포를 시간축에 표시. 시연: 서비스 하나 다운 · 자동 복구 · 무중단 배포 · (가능하면) 롤백 · Saga 보상. 관리자 화면에서 파드를 내리는 <b>F-1 장애 시연</b>(admin-service · <code>APP_CHAOS_ENABLED</code> 스위치 · 파드 조회 · 삭제만 하는 RBAC, 11/7)으로 진행.</td><td>13</td></tr>
 <tr><td>백엔드 구조</td><td><b>저장소 3개</b>: <code>gotgan-backend</code>(<code>services/</code> 서비스별 독립 Gradle 프로젝트 · Dockerfile, <code>serverless/</code>, docker-compose) · <code>gotgan-frontend</code>(React 루트) · <code>gotgan-config</code>(<code>deploy/</code> k8s · Helm · ArgoCD · 관측성, <code>infra/terraform/</code>, <code>scripts/</code>, <code>docs/</code>). 백엔드 CI가 이미지 태그를 gotgan-config의 <code>values.yaml</code>에 커밋하고 ArgoCD는 gotgan-config를 감시. 서비스 내부는 컨벤션의 <code>controller/service/repository/entity/dto/exception/client</code> 구조.</td><td>15</td></tr>
 <tr><td>일정</td><td><b>2026-10-12 ~ 11-20</b>, <b>11-05 기능 동결</b>(11/02 앞당김, 원래 11-13) · 11-06 QA · 2차 부하 측정 · 11-09 문서 · 11-10 ~ 발표 자료 · 리허설, <b>11-20 발표</b>. <b>1~2주차 인프라</b>(구지훈이 AWS IaC를 완성해 넘기면 이경석 CI/CD · 박지연 로깅이 연계, 2주차 말 목업 서비스 1개로 걷는 뼈대) → <b>3~5주차 도메인 개발(프론트 포함)</b> → <b>6주차 QA · 발표</b>.</td><td>16</td></tr>
 <tr><td>범위</td><td><b>Must</b>: 로그인 · 입점 · 카테고리 · 상품 · 검색(QueryDSL) · 장바구니 · 주문 · 결제 Saga · 배송 · <b>취소/반품/교환</b> · 구매확정 · <b>리뷰</b> · 정산 · 대시보드 · 헬스 체크 · 복원력 시연. <b>Should</b>: 포인트 · 회원등급 · 상품문의 · 알림/명세서 Lambda. <b>Won't</b>: 찜 · 쿠폰 · 비회원 구매 · 오토스케일링 · 파티셔닝 · CQRS/캐시 · Elasticsearch 등.</td><td>16</td></tr>
@@ -203,7 +203,7 @@ svg .arrowhead2{fill:var(--accent)}
 <tr><td>2</td><td>판매자가 카테고리를 골라 입점 요청</td><td><code>/seller/apply</code> (4단계 폼)</td><td>store (카테고리 목록은 product)</td><td>서류 업로드(S3 presigned URL), 입력 HTML sanitizer</td></tr>
 <tr><td>3</td><td>관리자 승인 → 쇼핑몰 개시</td><td><code>/admin/applications/:id</code></td><td>admin → store → user</td><td>admin이 store <code>/internal/**</code> 호출, <code>StoreApproved</code> 이벤트로 SELLER 역할 부여(Keycloak)</td></tr>
 <tr><td>4</td><td>판매자가 상품 등록</td><td><code>/seller/products/new</code></td><td>product</td><td>카테고리 · 옵션 · 재고, 이미지 S3 presigned 업로드</td></tr>
-<tr><td>5</td><td>유저가 장바구니 · 구매</td><td><code>/cart</code>, <code>/checkout</code></td><td>order (+ user · product · payment)</td><td>Redis 장바구니, <b>Saga</b>(포인트 · 재고 · 포트원 검증), 5% 포인트 적립</td></tr>
+<tr><td>5</td><td>유저가 장바구니 · 구매</td><td><code>/cart</code>, <code>/checkout</code></td><td>order (+ user · product · payment)</td><td>Redis 장바구니, <b>Saga</b>(포인트 · 재고 · 포트원 검증), 구매확정 시 5% 포인트 적립</td></tr>
 <tr><td>6</td><td>판매자 주문 확인 후 배송 · 클레임 처리</td><td><code>/seller/orders</code></td><td>order (+ payment · product)</td><td>상품주문 단위 상태머신, 송장 수기 입력, 취소 · 반품 · 교환(status)</td></tr>
 <tr><td>7</td><td>구매확정 후 리뷰 작성</td><td>마이페이지 주문 내역 · 상품 상세</td><td>review</td><td><code>OrderItemConfirmed</code>로 작성 자격 저장 → order 장애와 무관하게 작성</td></tr>
 <tr><td>8</td><td>관리자가 스토어별 정산(수수료 제외)</td><td><code>/admin/settlements</code></td><td>admin → settlement</td><td>구매확정 이벤트 적재, 주간 배치, 카테고리별 수수료, 명세서 Lambda</td></tr>
@@ -277,7 +277,7 @@ svg .arrowhead2{fill:var(--accent)}
 <rect class="hl" x="446" y="280" width="111" height="44"/><text x="501" y="299" text-anchor="middle" class="b">order (Saga)</text><text x="501" y="315" text-anchor="middle" class="s">주문 · 배송 · 취소</text>
 <rect class="bx" x="569" y="280" width="111" height="44"/><text x="624" y="299" text-anchor="middle" class="b">payment</text><text x="624" y="315" text-anchor="middle" class="s">포트원 검증 · 취소</text>
 <rect class="bx" x="692" y="280" width="111" height="44"/><text x="747" y="299" text-anchor="middle" class="b">settlement</text><text x="747" y="315" text-anchor="middle" class="s">정산 · 수수료</text>
-<rect class="bx" x="815" y="280" width="111" height="44"/><text x="870" y="299" text-anchor="middle" class="b">admin</text><text x="870" y="315" text-anchor="middle" class="s">조합 · admindb(신고)</text>
+<rect class="bx" x="815" y="280" width="111" height="44"/><text x="870" y="299" text-anchor="middle" class="b">admin · chat</text><text x="870" y="315" text-anchor="middle" class="s">조합 · 신고 · 알림 / 채팅</text>
 <rect class="bx" x="446" y="344" width="234" height="44"/><text x="563" y="363" text-anchor="middle" class="b">MySQL 8.4 (StatefulSet)</text><text x="563" y="379" text-anchor="middle" class="s">스키마 10개 · 서비스별 계정 · EBS gp3</text>
 <rect class="bx" x="692" y="344" width="234" height="44"/><text x="809" y="363" text-anchor="middle" class="b">Redis 7</text><text x="809" y="379" text-anchor="middle" class="s">장바구니 cart:{userId}</text>
 <text x="446" y="412" class="s">서비스 간 동기 호출: CoreDNS 이름 + Resilience4j (타임아웃 · 서킷 브레이커 · 폴백)</text>
@@ -309,7 +309,7 @@ svg .arrowhead2{fill:var(--accent)}
 <text x="446" y="516" class="s">이벤트 발행 (store · order · settlement)</text>
 <rect class="aws" x="20" y="542" width="200" height="60"/><text x="120" y="565" text-anchor="middle" class="b">S3</text><text x="120" y="583" text-anchor="middle" class="s">이미지 · 입점 서류 · 명세서 · 로그</text>
 <rect class="aws" x="240" y="542" width="180" height="60"/><text x="330" y="565" text-anchor="middle" class="b">SNS → SQS (+DLQ)</text><text x="330" y="583" text-anchor="middle" class="s">토픽 3개 · 구독자별 큐</text>
-<rect class="hl" x="440" y="542" width="220" height="60"/><text x="550" y="565" text-anchor="middle" class="b">Lambda × 3</text><text x="550" y="583" text-anchor="middle" class="s">알림 메일 · 정산 명세서 · 로그 아카이브</text>
+<rect class="hl" x="440" y="542" width="220" height="60"/><text x="550" y="565" text-anchor="middle" class="b">Lambda × 4</text><text x="550" y="583" text-anchor="middle" class="s">알림 메일 · 명세서 · 로그 아카이브 · 업로드 검사</text>
 <rect class="aws" x="680" y="542" width="90" height="60"/><text x="725" y="577" text-anchor="middle" class="b">SES</text>
 <rect class="aws" x="790" y="542" width="170" height="60"/><text x="875" y="565" text-anchor="middle" class="b">DynamoDB</text><text x="875" y="583" text-anchor="middle" class="s">알림 · 명세서 발송 이력</text>
 <rect class="aws" x="980" y="542" width="200" height="60"/><text x="1080" y="565" text-anchor="middle" class="b">GitHub Secrets</text><text x="1080" y="583" text-anchor="middle" class="s">DB 비밀번호 · 클라이언트 시크릿 · 포트원 키</text>
@@ -318,7 +318,7 @@ svg .arrowhead2{fill:var(--accent)}
 <path class="ln2" d="M600,602 C600,640 875,640 875,606" marker-end="url(#ah2)"/>
 <path class="ln2" d="M500,602 C500,640 120,640 120,606" marker-end="url(#ah2)"/>
 <path class="ln" d="M1061,542 V480" marker-end="url(#ah)"/>
-<text x="1068" y="514" class="s">ESO가 시크릿 동기화</text>
+<text x="1068" y="514" class="s">secrets-sync 가 Secret 생성</text>
 </svg>
 </div>
 <div class="tbl"><table>
@@ -327,7 +327,7 @@ svg .arrowhead2{fill:var(--accent)}
 <tr><td>2</td><td>게이트웨이가 Keycloak이 발급한 Access Token을 JWKS로 검증(서명 · 만료 · 역할)하고 <code>X-User-Id</code>, <code>X-User-Roles</code>, <code>X-Store-Id</code> 헤더를 붙여 order-service로 전달. 로그인 · 가입 자체는 <code>/api/auth/**</code> → user-service가 Keycloak을 대신 호출</td></tr>
 <tr><td>3</td><td>order-service가 주문을 <code>PENDING</code>으로 저장 → user-service <code>/internal/points/use</code>(포인트를 쓸 때만) → product-service <code>/internal/stock/reservations</code>(재고 예약) → payment-service <code>/internal/payments</code>(결제 준비 · <code>READY</code>) → 브라우저가 포트원 결제창으로 결제 (Saga)</td></tr>
 <tr><td>4</td><td>브라우저 → order <code>POST /api/orders/{orderNo}/payment/confirm</code> → payment-service <code>/internal/payments/verify</code>가 포트원 API로 금액 · 상태 검증 → order <code>PAID</code> 확정. 실패하면 역순 보상(포트원 취소 → 재고 해제 → 포인트 환원 → <code>FAILED</code>). 모든 동기 호출은 Resilience4j 타임아웃 · 서킷 브레이커 적용</td></tr>
-<tr><td>5</td><td>커밋 뒤 <code>OrderPaid</code> 이벤트를 SNS(<code>sesac-gojigi-order-events</code>)에 발행 → 구독자별 SQS → user-service가 실결제금액의 5% 포인트 적립, 알림 Lambda가 SES로 주문 확인 메일 발송(DynamoDB로 멱등 처리)</td></tr>
+<tr><td>5</td><td>커밋 뒤 <code>OrderPaid</code> 이벤트를 SNS(<code>sesac-gojigi-order-events</code>)에 발행 → 구독자별 SQS → 알림 Lambda가 SES로 주문 확인 메일 발송(DynamoDB로 멱등 처리) · admin 알림함. 5% 포인트는 나중에 구매확정(<code>OrderItemConfirmed</code>) 때 user-service가 적립</td></tr>
 <tr><td>6</td><td>모든 단계가 같은 traceId로 Loki(로그) · Zipkin(트레이스)에 남고, Prometheus가 지표를 수집해 Grafana "System Status"에 서비스별 상태가 초록/빨강으로 보임</td></tr>
 </table></div>
 </section>
@@ -342,7 +342,7 @@ svg .arrowhead2{fill:var(--accent)}
 <tr><th>말</th><th>이 프로젝트에서의 뜻</th><th>나누는 기준</th></tr>
 <tr><td>서비스 (마이크로서비스)</td><td>독립적으로 빌드·배포되는 단위. 저장소 폴더 1개 = Spring Boot 앱 1개 = 이미지 1개 = Deployment 1개</td><td>업무 기능과 <b>데이터 소유권</b></td></tr>
 <tr><td>서버 (노드)</td><td>파드가 올라가는 EC2. 모든 서비스가 노드 2~3대를 함께 씁니다</td><td>자원량(메모리·파드 수). 서비스마다 서버를 따로 두지 않습니다</td></tr>
-<tr><td>파드 레플리카</td><td>같은 서비스의 복제본. 가용성(한 파드가 죽어도 응답) 때문에 늘립니다</td><td>게이트웨이 2, 업무 서비스 1. 롤링 배포 중에는 잠깐 새 파드가 1개 더 뜸</td></tr>
+<tr><td>파드 레플리카</td><td>같은 서비스의 복제본. 가용성(한 파드가 죽어도 응답) 때문에 늘립니다</td><td>게이트웨이 2 · 구매 경로(user · store · product · order · payment) 2, 나머지(settlement · review · admin · chat) 1(11/5). 롤링 배포 중에는 잠깐 새 파드가 1개 더 뜸</td></tr>
 </table></div>
 
 <h3>서비스를 나누는 6가지 질문</h3>
@@ -351,7 +351,7 @@ svg .arrowhead2{fill:var(--accent)}
 <li><b>반드시 한 트랜잭션으로 묶여야 하는가?</b> 주문(<code>orders</code>)과 상품주문(<code>order_item</code>)은 항상 함께 바뀌므로 같은 서비스. 주문과 재고 · 결제 · 포인트는 잠시 어긋나도 보상할 수 있으므로 다른 서비스여도 됩니다(Saga, 06장).</li>
 <li><b>변경 이유가 같은가?</b> 정산 규칙이 바뀔 때 함께 고쳐야 하는 코드는 settlement 한곳에, 포트원 연동 방식이 바뀔 때 고칠 코드는 payment 한곳에 둡니다.</li>
 <li><b>부하 · 장애 특성이 다른가?</b> 상품 조회는 많고, 정산 배치는 주 1회, 결제는 외부 API(포트원) 지연에 묶입니다. 다르면 나눌 이유가 됩니다.</li>
-<li><b>한 사람이 책임질 수 있는가?</b> (Conway의 법칙) 3명이면 1인당 2~4개(gateway 포함), 전체 9개가 상한입니다. 그래서 각자 맡는 서비스가 <b>한 도메인 묶음</b>이 되도록 나눴습니다.</li>
+<li><b>한 사람이 책임질 수 있는가?</b> (Conway의 법칙) 3명이면 1인당 2~4개(gateway 포함), 처음 계획은 전체 9개가 상한이었고 10/27 chat 추가로 10개입니다. 그래서 각자 맡는 서비스가 <b>한 도메인 묶음</b>이 되도록 나눴습니다.</li>
 <li><b>나누면 동기 호출이 얼마나 생기는가?</b> 화면 하나를 그리려고 서비스 3~4개를 매번 동기 호출해야 한다면 경계를 의심합니다. 꼭 필요하면(대시보드) 서버에서 조합하고 부분 응답으로 장애를 가두며, 다른 서비스의 사실이 필요하면(리뷰 작성 자격) 이벤트로 받아 자기 DB에 둡니다.</li>
 </ol>
 
@@ -484,7 +484,7 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <tr><td><code>/api/users/**</code> (me · addresses · points)</td><td>user</td><td>인증</td></tr>
 <tr><td><code>/api/stores/**</code> · <code>/api/seller/apply/**</code> · <code>/api/seller/store/**</code> · <code>/api/seller/dashboard</code></td><td>store</td><td>스토어 조회 permitAll / 판매자 SELLER / 입점 신청 BUYER</td></tr>
 <tr><td><code>/api/products/**</code> · <code>/api/categories/**</code> · <code>/api/seller/products/**</code></td><td>product</td><td>GET permitAll / 판매자 SELLER</td></tr>
-<tr><td><code>/api/carts/**</code> · <code>/api/orders/**</code> · <code>/api/seller/order-items/**</code> · <code>/api/seller/claims/**</code></td><td>order</td><td>인증 / 판매자 SELLER</td></tr>
+<tr><td><code>/api/carts/**</code> · <code>/api/orders/**</code> · <code>/api/claims/**</code> · <code>/api/seller/order-items/**</code> · <code>/api/seller/claims/**</code></td><td>order</td><td>인증 / 판매자 SELLER</td></tr>
 <tr><td><code>/api/payments/webhook</code></td><td>payment</td><td>permitAll (포트원 서명 검증)</td></tr>
 <tr><td><code>/api/reviews/**</code> · <code>/api/inquiries/**</code> · <code>/api/seller/reviews/**</code> · <code>/api/seller/inquiries/**</code></td><td>review</td><td>GET permitAll / 작성 인증 / 판매자 SELLER</td></tr>
 <tr><td><code>/api/seller/settlements/**</code></td><td>settlement</td><td>SELLER</td></tr>
@@ -516,7 +516,7 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
             - id: order-service
               uri: ${ORDER_SERVICE_URI:http://localhost:8084}
               predicates:
-                - Path=/api/carts/**,/api/orders/**,/api/seller/order-items/**,/api/seller/claims/**
+                - Path=/api/carts/**,/api/orders/**,/api/claims/**,/api/seller/order-items/**,/api/seller/claims/**
             - id: settlement-service
               uri: ${SETTLEMENT_SERVICE_URI:http://localhost:8085}
               predicates:
@@ -561,12 +561,12 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <!-- ============================================================ 04 -->
 <section id="s4">
 <h2><span class="n">04</span>AWS 인프라 · EC2 사이징</h2>
-<p class="lead">결론: EKS 워커는 노드 그룹 2개 — 백 티어 <b><code>app</code> t3.xlarge × 2 (min 0 · max 3, 프라이빗 2a · 2c)</b> + DB 티어 <b><code>db</code> t3.medium × 1 (min 0 · max 1, 프라이빗 2a)</b>. app 노드에 서비스 9개 + Keycloak + 관측성 · ArgoCD를 올리면 파드 약 35개 · 메모리 requests 약 9.8Gi(10/27 chat 추가 후 서비스 10개 · 약 36개 · 약 10.3Gi)(실사용 약 12~13Gi — 그래서 10/14에 t3.large에서 t3.xlarge로 올림), db 노드에는 MySQL · Redis만(약 1.7Gi) 두고 NetworkPolicy로 백 티어에서만 접근합니다(10/13 3차). Terraform은 구지훈이 만들고, 클러스터(<code>cluster/</code>)는 <b>매일 08:00 만들고 22:00 지우며</b>, 나머지(VPC · ECR · EIP · S3 등)는 상시 유지합니다. SonarQube는 Cloud라 AWS 자원이 필요 없습니다.</p>
+<p class="lead">결론: EKS 워커는 노드 그룹 2개 — 백 티어 <b><code>app</code> t3.xlarge × 2 (min 0 · max 3, 프라이빗 2a · 2c)</b> + DB 티어 <b><code>db</code> t3.medium × 1 (min 0 · max 1, 프라이빗 2a)</b>. app 노드에 서비스 9개 + Keycloak + 관측성 · ArgoCD를 올리면 파드 약 35개 · 메모리 requests 약 9.8Gi(실사용 약 12~13Gi — 그래서 10/14에 t3.large에서 t3.xlarge로 올림), 10/27 chat 추가 · 11/5 구매 경로 레플리카 2 뒤에는 <b>파드 43개 · requests 약 11.6Gi</b>(11/10 실측), db 노드에는 MySQL · Redis만(requests 약 1.2Gi) 두고 NetworkPolicy로 백 티어에서만 접근합니다(10/13 3차). Terraform은 구지훈이 만들고, 클러스터(<code>cluster/</code>)는 <b>매일 08:00 만들고 22:00 지우며</b>, 나머지(VPC · ECR · EIP · S3 등)는 상시 유지합니다. SonarQube는 Cloud라 AWS 자원이 필요 없습니다.</p>
 
 <h3>먼저 짚을 점: "우분투 EC2"는 어디에 쓰나</h3>
 <div class="tbl"><table>
 <tr><th>용도</th><th>추천 OS · 크기</th><th>이유</th></tr>
-<tr><td><b>EKS 워커 노드 — <code>app</code> 노드 그룹(백 티어)</b></td><td><b>Amazon Linux 2023</b> (관리형 노드 그룹 <code>AL2023_x86_64_STANDARD</code>) · <b>t3.xlarge × 2</b> (4 vCPU · 16GiB, min 0 · max 3, 프라이빗 2a · 2c, 라벨 <code>tier=app</code>)</td><td>관리형 노드 그룹이 AMI·부트스트랩·업데이트를 대신 처리. 우분투 EKS AMI(Canonical 제공)도 가능하지만 시작 템플릿에 AMI ID와 부트스트랩 스크립트를 직접 넣어야 해 장애 지점이 늘어납니다. 노드에 SSH로 들어갈 일도 거의 없습니다. gateway · 업무 서비스 8 · Keycloak · 관측성 · ArgoCD가 여기에 뜹니다.</td></tr>
+<tr><td><b>EKS 워커 노드 — <code>app</code> 노드 그룹(백 티어)</b></td><td><b>Amazon Linux 2023</b> (관리형 노드 그룹 <code>AL2023_x86_64_STANDARD</code>) · <b>t3.xlarge × 2</b> (4 vCPU · 16GiB, min 0 · max 3, 프라이빗 2a · 2c, 라벨 <code>tier=app</code>)</td><td>관리형 노드 그룹이 AMI·부트스트랩·업데이트를 대신 처리. 우분투 EKS AMI(Canonical 제공)도 가능하지만 시작 템플릿에 AMI ID와 부트스트랩 스크립트를 직접 넣어야 해 장애 지점이 늘어납니다. 노드에 SSH로 들어갈 일도 거의 없습니다. gateway · 업무 서비스 9 · Keycloak · 관측성 · ArgoCD가 여기에 뜹니다.</td></tr>
 <tr><td><b>EKS 워커 노드 — <code>db</code> 노드 그룹(DB 티어)</b></td><td>같은 AMI · <b>t3.medium × 1</b> (min 0 · max 1, 프라이빗 2a, 라벨 + 테인트 <code>tier=db:NoSchedule</code>)</td><td>MySQL · Redis만 두는 노드. 테인트 때문에 toleration이 있는 DB 파드 외에는 스케줄되지 않고, EBS gp3 PVC가 2a에 묶이므로 노드도 2a 고정입니다. NetworkPolicy(<code>deploy/k8s/02-networkpolicy.yaml</code>)로 3306 · 6379는 백 티어 파드(<code>tier=backend</code>)에서만 들어오고, DB 파드는 DNS 외에 밖으로 나가지 않습니다.</td></tr>
 <tr><td>작업용 EC2 (선택)</td><td><b>Ubuntu 24.04 LTS</b> · t3.small(2GiB) · gp3 20GiB · 퍼블릭 서브넷(2a)</td><td>아래 인프라 도면의 "작업용 EC2"입니다. 팀이 공용으로 kubectl · <code>terraform plan</code>을 돌리는 곳이 필요할 때만 만들고, 접속은 <b>SSM Session Manager만</b>(22번 포트 닫힘). EKS API는 퍼블릭 엔드포인트라 각자 WSL에서 바로 kubectl을 쓸 수 있으므로 <b>필수는 아닙니다</b>.</td></tr>
 <tr><td>SonarQube · CI 서버</td><td><b>필요 없음</b></td><td>정적 분석은 <b>SonarQube Cloud 무료 플랜</b>, 빌드는 GitHub Actions(12장). EC2 · 클러스터 자원을 쓰지 않습니다.</td></tr>
@@ -603,9 +603,9 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <tr><td>VPC · 서브넷 4 · IGW · <b>NAT GW</b> · 라우팅 · EKS용 태그</td><td><code>vpc/</code></td><td>1주차, 그대로 유지</td><td>야간 비용의 대부분(NAT 시간당 요금)</td></tr>
 <tr><td>ECR 저장소 10개 + 수명주기 (10/27 chat 추가)</td><td><code>ecr/</code></td><td>1주차</td><td>이미지가 남아 있어 아침에 다시 빌드할 필요 없음</td></tr>
 <tr><td>GitHub OIDC 공급자 · Actions 역할</td><td><code>cicd/</code></td><td>1주차</td><td>스케줄 · bootstrap 워크플로가 이 역할로 apply/destroy</td></tr>
-<tr><td><b>EIP 2</b> · S3 4 · SNS 3 + SQS/DLQ · DynamoDB 2 · SES 자격 증명 · SSM 파라미터 · 작업용 EC2(선택)</td><td><code>app/</code></td><td>EIP는 1주차, 나머지 2주차까지</td><td>EIP가 남으므로 <b>Route 53 A 레코드 · ACM 인증서는 바꾸지 않음</b>(<code>dns.tf</code>도 <code>app/</code> 상시). DynamoDB 발송 이력 · S3 파일은 보존</td></tr>
-<tr><td rowspan="2"><b>매일 재생성</b><br>08:00 생성 · 22:00 삭제</td><td>EKS 제어 평면 · 관리형 노드 그룹 2개(<code>app</code> t3.xlarge × 2 · <code>db</code> t3.medium × 1) · access entries · IRSA 역할 · 애드온(EBS CSI · LBC · metrics-server)</td><td><code>cluster/</code> — <code>infra-schedule.yml</code>(KST 08:00 apply · 22:00 destroy — EventBridge Scheduler → Lambda → workflow_dispatch, 10/26 GitHub cron 에서 이전)</td><td>매일 (주말 포함)</td><td>apply → bootstrap까지 <b>약 20분</b>(제어 평면 10분 + 노드 + 애드온). destroy 전에 ArgoCD 앱 · LoadBalancer Service · PVC를 먼저 지워 NLB · EBS가 고아로 남지 않게</td></tr>
-<tr><td>클러스터 안의 전부: 파드(app 노드 — gateway 2 · 업무 서비스 8 · Keycloak · 관측성 · ArgoCD / db 노드 — MySQL · Redis) · <b>NLB</b>(LBC) · <b>EBS 볼륨</b>(gp3 디스크, PVC) · NetworkPolicy · K8s Secret · ConfigMap</td><td><code>bootstrap.yml</code>(apply 직후 자동) → <code>deploy/k8s/</code>(namespace · configmap · <b>02-networkpolicy</b> · db · keycloak) → <code>secrets-sync</code> → 관측성 → ArgoCD → 서비스 10개(chat 포함)</td><td>08:00 apply 직후</td><td>NLB는 상시 EIP를 어노테이션으로 다시 붙임 → 주소 불변</td></tr>
+<tr><td><b>EIP 2</b> · S3 4 · SNS 3 + SQS/DLQ · DynamoDB 3 · SES 자격 증명 · SSM 파라미터 · 작업용 EC2(선택)</td><td><code>app/</code></td><td>EIP는 1주차, 나머지 2주차까지</td><td>EIP가 남으므로 <b>Route 53 A 레코드 · ACM 인증서는 바꾸지 않음</b>(<code>dns.tf</code>도 <code>app/</code> 상시). DynamoDB 발송 이력 · S3 파일은 보존</td></tr>
+<tr><td rowspan="2"><b>매일 재생성</b><br>08:00 생성 · 22:00 삭제</td><td>EKS 제어 평면 · 관리형 노드 그룹 2개(<code>app</code> t3.xlarge × 2 · <code>db</code> t3.medium × 1) · access entries · IRSA 역할 · 애드온(EBS CSI · LBC · metrics-server)</td><td><code>cluster/</code> — <code>infra-schedule.yml</code>(KST 08:00 apply · 22:00 destroy — EventBridge Scheduler → Lambda → workflow_dispatch, 10/26 GitHub cron 에서 이전)</td><td>매일 (주말 포함)</td><td>apply → bootstrap까지 <b>약 27분</b>(제어 평면 10분 + 노드 + 애드온 + bootstrap → 08:30 사용). destroy 전에 ArgoCD 앱 · LoadBalancer Service · PVC를 먼저 지워 NLB · EBS가 고아로 남지 않게</td></tr>
+<tr><td>클러스터 안의 전부: 파드(app 노드 — gateway 2 · 업무 서비스 9(구매 경로 5개는 2) · Keycloak · 관측성 · ArgoCD / db 노드 — MySQL · Redis) · <b>NLB</b>(LBC) · <b>EBS 볼륨</b>(gp3 디스크, PVC) · NetworkPolicy · K8s Secret · ConfigMap</td><td><code>bootstrap.yml</code>(apply 직후 자동) → <code>deploy/k8s/</code>(namespace · configmap · <b>02-networkpolicy</b> · db · keycloak) → <code>secrets-sync</code> → 관측성 → ArgoCD → 서비스 10개(chat 포함)</td><td>08:00 apply 직후</td><td>NLB는 상시 EIP를 어노테이션으로 다시 붙임 → 주소 불변</td></tr>
 </table></div>
 <div class="box rec"><b class="t">매일 다시 생긴다는 것의 뜻 — 코드가 이렇게 준비돼 있어야 한다</b>
 <ul>
@@ -618,17 +618,17 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 </ul></div>
 
 <h3>파드 예산으로 노드 크기 정하기</h3>
-<p>학습 가이드의 t3.medium × 2는 서비스 3개 기준으로도 "파드 31/34, 여유 3개"였습니다. 업무 서비스 9개(10/27 chat 포함) + 게이트웨이 + Keycloak + 헬스 체크용 메트릭까지 올리면 아래와 같습니다. 오토스케일링(HPA)은 쓰지 않으므로 업무 서비스는 1개씩입니다. 10/13 3차 결정으로 MySQL · Redis는 별도 <code>db</code> 노드로 분리했으므로 예산도 노드 그룹별로 나눕니다.</p>
+<p>학습 가이드의 t3.medium × 2는 서비스 3개 기준으로도 "파드 31/34, 여유 3개"였습니다. 업무 서비스 9개(10/27 chat 포함) + 게이트웨이 + Keycloak + 헬스 체크용 메트릭까지 올리면 아래와 같습니다. 오토스케일링(HPA)은 쓰지 않으므로 레플리카는 고정입니다 — 11/5부터 구매 경로(user · store · product · order · payment)는 2개, 나머지는 1개. 10/13 3차 결정으로 MySQL · Redis는 별도 <code>db</code> 노드로 분리했으므로 예산도 노드 그룹별로 나눕니다.</p>
 <p class="cap"><code>app</code> 노드 그룹(t3.xlarge × 2) — 백 티어 파드 예산</p>
 <div class="tbl"><table>
 <tr><th>항목</th><th>파드 수</th><th>메모리 requests</th><th>비고</th></tr>
 <tr><td>gateway × 2</td><td>2</td><td>512Mi × 2 = 1Gi</td><td>항상 2개 (한 개가 죽어도 진입점 유지)</td></tr>
-<tr><td>업무 서비스 9개 × 1</td><td>9</td><td>512Mi × 9 = 4.5Gi</td><td>user · store · product · order · payment · review · settlement · admin · chat(10/27 추가)</td></tr>
+<tr><td>업무 서비스 9개 (구매 경로 5개 × 2 + 나머지 4개 × 1)</td><td>14</td><td>512Mi × 14 = 7Gi</td><td>× 2: user · store · product · order · payment(11/5) / × 1: review · settlement · admin · chat(10/27 추가)</td></tr>
 <tr><td>Keycloak</td><td>1</td><td>1Gi</td><td>클러스터 내부 전용, DB는 db 노드의 MySQL keycloakdb</td></tr>
-<tr><td>관측성 (Prometheus · Loki · Zipkin · Grafana · kube-state-metrics)</td><td>5</td><td>약 1.8Gi</td><td>kube-state-metrics는 헬스 체크 대시보드에 필수(13장). blackbox exporter는 쓰지 않음(10/13 3차)</td></tr>
-<tr><td>ArgoCD</td><td>5</td><td>약 0.8Gi</td><td>dex · notifications는 0으로</td></tr>
+<tr><td>관측성 (Prometheus · Loki · Zipkin · Grafana · kube-state-metrics)</td><td>5</td><td>약 1.4Gi</td><td>kube-state-metrics는 헬스 체크 대시보드에 필수(13장). blackbox exporter는 쓰지 않음(10/13 3차)</td></tr>
+<tr><td>ArgoCD</td><td>7</td><td>0 (requests 없음)</td><td>공식 install.yaml 그대로(v3.5.3) — dex · notifications 포함 7개, requests 를 두지 않음. 실사용 약 1Gi</td></tr>
 <tr><td>시스템 (aws-node, kube-proxy, coredns, EBS CSI, LBC, metrics-server)</td><td>약 14</td><td>약 1.2Gi</td><td>DaemonSet은 노드 수만큼 늘어남</td></tr>
-<tr><td><b>합계</b></td><td><b>약 36</b></td><td><b>약 10.3Gi</b></td><td>t3.xlarge × 2 할당 가능 약 30Gi → <b>requests 여유 약 19.7Gi, 실사용(약 12.5~13.5Gi) 기준 여유 약 16.5Gi</b>. 노드 1대만 남아도(약 15Gi) 실사용 수용. 시크릿은 K8s Secret(secrets-sync)이라 운영자 파드가 없음</td></tr>
+<tr><td><b>합계</b></td><td><b>43</b></td><td><b>약 11.6Gi</b></td><td>11/10 실측(<code>kubectl describe nodes</code>). t3.xlarge × 2 할당 가능 약 28.9Gi → <b>requests 여유 약 17.3Gi, 실사용(약 12~13Gi) 기준 여유 약 16Gi</b>. 노드 1대만 남아도(약 14.4Gi) 실사용 수용. 시크릿은 K8s Secret(secrets-sync)이라 운영자 파드가 없음</td></tr>
 </table></div>
 <p class="cap">k6 측정(11/4 ~ 11/6) 뒤 확정한 값 — 노드는 그대로, 힙 상한과 CPU 예약을 조정. 11/6 2차(최종) 측정 뒤에도 값 변경 없음</p>
 <div class="tbl"><table>
@@ -645,8 +645,8 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <tr><th>항목</th><th>파드 수</th><th>메모리 requests</th><th>비고</th></tr>
 <tr><td>MySQL 8.4 (StatefulSet)</td><td>1</td><td>1Gi</td><td><code>innodb_buffer_pool_size=256M</code> 정도로. EBS 볼륨(gp3 디스크) 20Gi PVC</td></tr>
 <tr><td>Redis 7 (AOF)</td><td>1</td><td>128Mi</td><td>EBS 볼륨(gp3 디스크) 1Gi PVC</td></tr>
-<tr><td>시스템 DaemonSet (aws-node, kube-proxy, EBS CSI 노드)</td><td>약 3</td><td>약 0.5Gi</td><td>테인트 <code>tier=db:NoSchedule</code>이라 그 외 파드는 오지 않음</td></tr>
-<tr><td><b>합계</b></td><td><b>약 5</b></td><td><b>약 1.7Gi</b></td><td>t3.medium 할당 가능 약 3.4Gi → 여유 약 1.7Gi</td></tr>
+<tr><td>시스템 DaemonSet (aws-node, kube-proxy, EBS CSI 노드)</td><td>3</td><td>약 0.1Gi</td><td>테인트 <code>tier=db:NoSchedule</code>이라 그 외 파드는 오지 않음</td></tr>
+<tr><td><b>합계</b></td><td><b>5</b></td><td><b>약 1.2Gi</b></td><td>11/10 실측. t3.medium 할당 가능 약 3.2Gi → requests 여유 약 2Gi(실사용 약 1.3Gi)</td></tr>
 </table></div>
 <div class="tbl"><table>
 <tr><th>후보 (app 노드 그룹)</th><th>vCPU · 메모리</th><th>노드당 최대 파드</th><th>할당 가능 메모리 · 파드</th><th>판단</th></tr>
@@ -793,9 +793,9 @@ data "aws_iam_roles" "github_actions" {
 <p class="cap">SQS 구독 큐 — 이벤트 표(10장)의 구독자마다 큐 1개</p>
 <div class="tbl"><table>
 <tr><th>토픽</th><th>구독 큐 (서비스 · Lambda)</th></tr>
-<tr><td>store-events</td><td>user(SELLER 전환) · product(상품 숨김) · settlement(지급 보류) · 알림 Lambda</td></tr>
-<tr><td>order-events</td><td>user(포인트 적립 · 등급) · settlement(정산 적재) · review(작성 자격) · 알림 Lambda</td></tr>
-<tr><td>settlement-events</td><td>정산 명세서 Lambda</td></tr>
+<tr><td>store-events</td><td>user(SELLER 전환) · product(상품 숨김) · settlement(지급 보류) · 알림 Lambda · admin(알림 센터, 10/27)</td></tr>
+<tr><td>order-events</td><td>user(포인트 적립 · 등급) · settlement(정산 적재) · review(작성 자격) · 알림 Lambda · admin(알림 센터, 10/27)</td></tr>
+<tr><td>settlement-events</td><td>정산 명세서 Lambda · admin(알림 센터, 10/27)</td></tr>
 </table></div>
 <div class="grid2">
 <div class="card"><h4>서비스별 IRSA 권한 (최소 권한)</h4>
@@ -809,7 +809,7 @@ data "aws_iam_roles" "github_actions" {
 <li>settlement-service: SQS 수신(order-events · store-events 구독 큐), <code>sns:Publish</code>(settlement-events), <code>s3:GetObject</code>(reports — 명세서 presigned 링크) + 버킷 <code>s3:ListBucket</code>(HeadObject 존재 확인)</li>
 <li>admin-service: 알림 센터 — SQS 수신(admin 구독 큐) · DynamoDB <code>sesac-gojigi-inbox</code> Put · Query · Update (10/27)</li>
 <li>gateway-service: AWS 권한 없음</li>
-<li>grafana: CloudWatch 읽기 (Lambda 로그) — <b>박지연</b>(관측성 담당)이 <code>cluster/irsa_grafana.tf</code>로 작성. 역할 <code>sesac-gojigi-grafana-irsa</code>(11/6) — Lambda 로그 그룹 <code>/aws/lambda/sesac-gojigi-*</code> 읽기 + 지표 읽기만. Grafana 데이터소스 연결은 아직</li>
+<li>grafana: CloudWatch 읽기 (Lambda 로그) — <b>박지연</b>(관측성 담당)이 <code>cluster/irsa_grafana.tf</code>로 작성. 역할 <code>sesac-gojigi-grafana-irsa</code>(11/6) — Lambda 로그 그룹 <code>/aws/lambda/sesac-gojigi-*</code> 읽기 + 지표 읽기만. Grafana CloudWatch 데이터소스(uid <code>cloudwatch</code>)에 연결돼 Lambda · DLQ 대시보드(<code>lambda.json</code>)가 씀</li>
 <li>KMS · Secrets Manager 권한은 없습니다 (쓰지 않음)</li>
 <li>S3 HeadObject로 객체 존재를 확인하는 서비스는 버킷 <code>s3:ListBucket</code>이 필요합니다 — 없으면 없는 키에 404 대신 <b>403</b>이 옵니다(10/23)</li>
 <li>AWS SDK를 쓰는 서비스는 <code>software.amazon.awssdk:sts</code> 의존성이 <b>반드시</b> 필요합니다 — IRSA 웹 아이덴티티 토큰을 STS로 교환하므로, 없으면 로컬은 되고 클러스터에서만 자격 증명 실패(10/23 store 502 사례)</li>
@@ -862,7 +862,7 @@ data "aws_iam_roles" "github_actions" {
 <tr><th>대상</th><th>서빙</th><th>주소 예</th><th>HTTPS</th></tr>
 <tr><td>프론트 (React)</td><td><b>Vercel</b> (GitHub 연동 자동 배포)</td><td><code>https://gotgan-ashy.vercel.app</code></td><td>Vercel이 자동 제공</td></tr>
 <tr><td>API (게이트웨이)</td><td><b>Route 53</b> A 레코드 → NLB의 <b>EIP 2개</b> → NLB <b>443 TLS 리스너</b> → gateway 파드 8080</td><td><code>https://api.gotgan.click</code></td><td><b>ACM 인증서</b>(무료 · 자동 갱신), NLB에서 TLS 종료</td></tr>
-<tr><td>Keycloak · Grafana · ArgoCD</td><td>공개하지 않음 (ClusterIP)</td><td><code>kubectl port-forward</code></td><td>—</td></tr>
+<tr><td>Keycloak 관리 콘솔 · Grafana · ArgoCD</td><td>공개하지 않음 (ClusterIP). Keycloak 은 소셜 로그인용 <code>/realms/gotgan/**</code> · <code>/resources/**</code> 만 gateway 경유로 공개</td><td><code>kubectl port-forward</code></td><td>—</td></tr>
 </table></div>
 <div class="tbl"><table>
 <tr><th>항목</th><th>비용</th><th>비고</th></tr>
@@ -877,7 +877,7 @@ data "aws_iam_roles" "github_actions" {
 <li>브라우저 입장에서 프론트와 API가 <b>같은 출처</b> → CORS 설정이 거의 필요 없음</li>
 <li>리프레시 토큰 쿠키(<code>Path=/api/auth</code>)가 퍼스트파티로 동작(08장)</li>
 <li>포트원 웹훅 주소도 <code>https://gotgan-ashy.vercel.app/api/payments/webhook</code>으로 HTTPS 주소를 줄 수 있음(07장)</li>
-<li>로그인 · 가입도 우리 React 화면 → <code>/api/auth/**</code> → user-service가 Keycloak을 클러스터 안에서 대신 호출합니다. <b>Keycloak 경로(<code>/auth/*</code>, <code>/realms/*</code>)는 rewrite하지 않고 외부에 노출하지 않습니다.</b></li>
+<li>로그인 · 가입도 우리 React 화면 → <code>/api/auth/**</code> → user-service가 Keycloak을 클러스터 안에서 대신 호출합니다. <b>Keycloak 경로는 Vercel 이 rewrite하지 않습니다.</b> 소셜 로그인 화면만 gateway 라우트 <code>/realms/gotgan/**</code> · <code>/resources/**</code>로 <code>https://api.gotgan.click</code> 에서 직접 열리고(관리 콘솔 · master realm 은 비공개), 나머지 Keycloak 경로는 외부에 노출하지 않습니다.</li>
 <li>Vercel ↔ AWS 구간도 HTTPS로 <b>암호화</b>됩니다(이전 DuckDNS 구성의 HTTP 평문 구간 해소).</li>
 </ul>
 
@@ -964,7 +964,7 @@ curl -i https://gotgan-ashy.vercel.app/api/...               # Vercel rewrite �
 <div class="box warn"><b class="t">이 구성의 주의 사항</b>
 <ul>
 <li>공개되는 것은 gateway(NLB 443)뿐입니다. <b>Keycloak 관리 콘솔 · Grafana · ArgoCD는 계속 비공개</b>(ClusterIP, <code>kubectl port-forward</code>)로 둡니다.</li>
-<li>소셜 로그인(USR-12)에 필요한 Keycloak HTTPS 공개 주소도 이 도메인으로 만들 수 있습니다. Keycloak <code>KC_HOSTNAME</code> · gateway <code>/realms/**</code> 라우트 · issuer 변경은 소셜 로그인 작업 때 이경석이 담당합니다. 그 전까지 <code>/realms/*</code>는 노출하지 않습니다.</li>
+<li>소셜 로그인(USR-12)에 필요한 Keycloak HTTPS 공개 주소도 이 도메인을 씁니다(이경석) — Keycloak <code>KC_HOSTNAME=https://api.gotgan.click</code> · gateway <code>/realms/gotgan/**</code> · <code>/resources/**</code> 라우트 · 토큰 issuer 가 모두 이 주소. 관리 콘솔(<code>KC_HOSTNAME_ADMIN=http://localhost:8080</code>)과 master realm 은 열지 않습니다.</li>
 <li>Vercel 무료(Hobby) 플랜은 개인·비상업 용도이고, GitHub <b>조직(Organization)의 비공개 저장소</b> 연결에 제약이 있을 수 있습니다. 저장소를 공개로 두거나 한 사람 계정에 연결하는 방식을 미리 확인합니다.</li>
 <li>게이트웨이가 보는 클라이언트 IP는 Vercel 서버 IP입니다. 실제 IP는 <code>X-Forwarded-For</code> 헤더로 읽습니다.</li>
 <li>ACM 검증 레코드(<code>api_cert_validation</code>)를 지우면 인증서 자동 갱신이 멈춥니다. 상시 폴더 <code>app/</code>에 그대로 둡니다.</li>
@@ -1009,22 +1009,24 @@ SQL
 done</code></pre>
 <div class="tbl"><table>
 <tr><th>서비스</th><th>MySQL 스키마 (테이블)</th><th>그 외 저장소</th></tr>
-<tr><td>user</td><td>userdb: users(<code>point_balance</code> · <code>grade</code> 포함), address, point_history</td><td>—</td></tr>
-<tr><td>store</td><td>storedb: store_application, application_document, application_history, store, store_status_history, shedlock</td><td>S3: 입점 서류</td></tr>
-<tr><td>product</td><td>productdb: category, product, product_option, product_image, stock_history, processed_event</td><td>S3: 상품 이미지</td></tr>
-<tr><td>order</td><td>orderdb: <b>아래 예시</b> — cart_item(장바구니 원본), orders, order_item, order_store_shipment, order_item_history, order_claim, saga_instance, outbox_event, shedlock</td><td>Redis: 장바구니 <b>캐시</b> <code>cart:{userId}</code>(원본은 cart_item, 09장)</td></tr>
-<tr><td>payment</td><td>paymentdb: payment, payment_cancel (07장)</td><td>—</td></tr>
+<tr><td>user</td><td>userdb: users(<code>point_balance</code> · <code>grade</code> 포함), address, point_history, point_use_saga, processed_event, shedlock</td><td>—</td></tr>
+<tr><td>store</td><td>storedb: store_application, application_document, application_history, store, store_status_history, outbox_event, shedlock</td><td>S3: 입점 서류</td></tr>
+<tr><td>product</td><td>productdb: category, product, product_option, product_image, stock_history, store_status, processed_event</td><td>S3: 상품 이미지</td></tr>
+<tr><td>order</td><td>orderdb: <b>아래 예시</b> — cart_item(장바구니 원본), orders, order_item, order_store_shipment, order_item_history, order_claim, saga_instance, outbox_event, order_no_sequence, shedlock</td><td>Redis: 장바구니 <b>캐시</b> <code>cart:{userId}</code>(원본은 cart_item, 09장)</td></tr>
+<tr><td>payment</td><td>paymentdb: payment, payment_cancel, shedlock (07장)</td><td>—</td></tr>
 <tr><td>review</td><td>reviewdb: review, review_image, review_eligibility, product_inquiry, processed_event</td><td>S3: 리뷰 사진</td></tr>
-<tr><td>settlement</td><td>settlementdb: category_commission, settlement_store(StoreApproved 스냅샷), settlement_item, settlement, payout, processed_event, shedlock</td><td>—</td></tr>
+<tr><td>settlement</td><td>settlementdb: category_commission, settlement_store(StoreApproved 스냅샷), settlement_item, settlement, settlement_history, payout, event_outbox, processed_event, shedlock</td><td>—</td></tr>
+<tr><td>admin</td><td>admindb: report, moderation_action(신고 · 조치 이력, 10/26), chaos_event(F-1 장애 시연 기록, 11/7)</td><td>DynamoDB: 알림함 <code>sesac-gojigi-inbox</code> · Redis <code>notify:</code></td></tr>
+<tr><td>chat</td><td>chatdb: chat_room, chat_message, chat_read, shedlock (10/27)</td><td>Redis: <code>chat:room:</code> · <code>chat:presence:</code></td></tr>
 <tr><td>keycloak</td><td>keycloakdb: Keycloak이 관리 (계정 · 역할 · 세션)</td><td>—</td></tr>
-<tr><td>gateway · admin</td><td>없음</td><td>gateway: Redis <code>blacklist:{jti}</code>(Could)</td></tr>
+<tr><td>gateway</td><td>없음</td><td>gateway: Redis 요청 제한 카운터(10/27). <code>blacklist:{jti}</code>는 Could — 만들지 않음</td></tr>
 </table></div>
 
 <h3>Flyway — 이 구조에서도 쓰는 것이 좋은가? → 예, 처음부터 넣으세요</h3>
 <p>Flyway는 <code>V1__init.sql</code>, <code>V2__...sql</code>처럼 번호 붙은 SQL 파일을 순서대로 한 번씩만 실행하고, 어디까지 실행했는지를 DB의 <code>flyway_schema_history</code> 테이블에 기록하는 스키마 버전 관리 도구입니다. 앱이 뜰 때 아직 실행하지 않은 파일만 실행합니다.</p>
 <div class="tbl"><table>
 <tr><th>이 프로젝트의 상황</th><th>Flyway가 없으면</th><th>Flyway가 있으면</th></tr>
-<tr><td><b>스키마 7개(keycloakdb 제외), 각 주인은 서비스</b> (Database per Service)</td><td>누가 언제 어떤 ALTER를 했는지 아무도 모름</td><td>스키마 변경이 서비스 코드와 같은 PR에 들어가 리뷰됨. 서비스 폴더만 보면 그 DB의 역사가 다 있음</td></tr>
+<tr><td><b>스키마 9개(keycloakdb 제외), 각 주인은 서비스</b> (Database per Service)</td><td>누가 언제 어떤 ALTER를 했는지 아무도 모름</td><td>스키마 변경이 서비스 코드와 같은 PR에 들어가 리뷰됨. 서비스 폴더만 보면 그 DB의 역사가 다 있음</td></tr>
 <tr><td><b>같은 스키마가 4곳 이상</b>: 각자 로컬 docker compose, CI의 Testcontainers, dev 클러스터 MySQL</td><td>"내 로컬에선 되는데" — 환경마다 테이블 모양이 다름</td><td>어디서 띄우든 같은 파일로 같은 스키마가 만들어짐</td></tr>
 <tr><td><b>ArgoCD 자동 배포</b></td><td>배포 전에 누군가 <code>kubectl exec mysql</code>로 손으로 ALTER → 순서 꼬이면 장애</td><td>새 이미지가 뜰 때 앱이 스스로 마이그레이션 → 코드와 스키마가 함께 이동</td></tr>
 <tr><td><b>비용 때문에 클러스터를 지웠다 다시 만듦</b></td><td>테이블 · 시드 데이터를 다시 손으로</td><td>빈 MySQL에서 마이그레이션 + 시드가 자동 실행 → 바로 시연 가능</td></tr>
@@ -1212,7 +1214,7 @@ CREATE TABLE cart_item (
   INDEX idx_cart_item_user (user_id)                                        -- 사용자 장바구니 조회
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='장바구니 (원본)';
 
--- (Could) Transactional Outbox: 이벤트를 DB와 같은 트랜잭션으로 기록
+-- Transactional Outbox: 이벤트를 DB와 같은 트랜잭션으로 기록 (구현 — order · store · settlement, 10장)
 CREATE TABLE outbox_event (
   outbox_event_id BIGINT       NOT NULL AUTO_INCREMENT,
   event_id        CHAR(36)     NOT NULL COMMENT 'UUID — 소비자 멱등 키',
@@ -1237,9 +1239,9 @@ CREATE TABLE outbox_event (
 <div class="tbl"><table>
 <tr><th>흐름</th><th>Saga?</th><th>이유</th></tr>
 <tr><td><b>주문 생성</b>: 주문 PENDING → 포인트 사용(user) → 재고 예약(product) → 결제 준비(payment) → 브라우저 결제(포트원) → 결제 검증(payment) → 주문 PAID</td><td><b>필요 (오케스트레이션)</b></td><td>서비스 3개 + 외부 결제에 걸친 쓰기. 재고 부족 · 결제 실패 · 금액 위변조 · 결제 포기 시 쓴 포인트와 예약 재고를 되돌리고 필요하면 환불해야 하며, 사용자는 즉시 성공/실패를 알아야 함</td></tr>
-<tr><td><b>결제 후 취소 · 반품</b>: 상품주문 상태 전이 → 포트원 부분 취소(payment) → 재고 복원(product) → 사용 포인트 환원 · 적립 포인트 회수(user)</td><td><b>필요 (오케스트레이션)</b></td><td>순서가 중요하고, 결제 취소가 실패하면 재고 · 포인트를 되돌리면 안 됨</td></tr>
+<tr><td><b>결제 후 취소 · 반품</b>: 상품주문 상태 전이 → 포트원 부분 취소(payment) → 재고 복원(product) → 사용 포인트 환원(user) — 적립은 구매확정 뒤라 회수할 것이 없음</td><td><b>필요 (오케스트레이션)</b></td><td>순서가 중요하고, 결제 취소가 실패하면 재고 · 포인트를 되돌리면 안 됨</td></tr>
 <tr><td>교환</td><td>불필요 (order 안 status)</td><td>재배송만 하고 결제 · 재고 · 포인트 변동이 없음</td></tr>
-<tr><td>결제 완료 → 5% 포인트 적립</td><td>불필요 (이벤트 <code>OrderPaid</code>)</td><td>몇 초 늦어도 무방. user가 eventId로 멱등 처리, 실패하면 SQS 재시도 → DLQ</td></tr>
+<tr><td>구매확정 → 5% 포인트 적립</td><td>불필요 (이벤트 <code>OrderItemConfirmed</code>, 10/29 — 처음엔 <code>OrderPaid</code>)</td><td>몇 초 늦어도 무방. user가 eventId로 멱등 처리, 실패하면 SQS 재시도 → DLQ</td></tr>
 <tr><td>입점 승인 → 판매자 권한 부여 → 승인 메일</td><td>불필요 (이벤트 <code>StoreApproved</code>)</td><td>승인은 store 안에서 확정. 권한 부여 · 메일은 나중에 되어도 되고, 되돌릴 일이 없음 → 이벤트 + 재시도</td></tr>
 <tr><td>구매확정 → 정산 대상 적재 · 리뷰 작성 자격 · 회원등급</td><td>불필요 (이벤트 <code>OrderItemConfirmed</code>)</td><td>정산은 주 1회 집계, 자격 · 등급도 몇 초 늦어도 무방(결과적 일관성)</td></tr>
 <tr><td>정산 지급</td><td>불필요 (로컬 트랜잭션)</td><td>settlement 안에서 끝남. 명세서 메일은 이벤트</td></tr>
@@ -1261,7 +1263,7 @@ CREATE TABLE outbox_event (
 <tr><td>4</td><td>order → payment <code>POST /internal/payments</code></td><td>결제 READY 생성 + <code>portone_payment_id</code> 발급 → 브라우저에 실결제금액과 함께 응답</td><td>PAYMENT_READY (결제 대기, 최대 15분)</td></tr>
 <tr><td>5</td><td>브라우저 ↔ 포트원</td><td>결제창에서 테스트 카드로 결제 (금액 = 실결제금액)</td><td>(서버는 기다림)</td></tr>
 <tr><td>6</td><td>브라우저 → order <code>POST /api/orders/{orderNo}/payment/confirm</code> → payment <code>POST /internal/payments/verify</code></td><td>payment가 포트원에 직접 조회해 상태 · 금액 비교. 불일치면 payment가 <b>포트원 자동 취소</b> 후 오류 응답</td><td>PAYMENT_VERIFIED</td></tr>
-<tr><td>7</td><td>order</td><td>주문 PAID + 상품주문 PAYMENT_DONE → 커밋 후 <code>OrderPaid</code> 발행 → user가 5% 적립(비동기)</td><td>DONE</td></tr>
+<tr><td>7</td><td>order</td><td>주문 PAID + 상품주문 PAYMENT_DONE → 커밋 후 <code>OrderPaid</code> 발행 → 주문 확인 메일 · 알림함(비동기). 포인트 적립은 구매확정 때</td><td>DONE</td></tr>
 <tr><td>실패</td><td>order (역순 보상)</td><td>payment 취소(결제됐다면 포트원 취소, 아니면 READY → FAILED) → product 재고 해제 → user 포인트 환원 → 주문 FAILED(상품주문은 ORDERED 그대로)</td><td>COMPENSATING → COMPENSATED</td></tr>
 </table></div>
 <div class="tbl"><table>
@@ -1269,7 +1271,7 @@ CREATE TABLE outbox_event (
 <tr><td>① order: <code>order_claim</code> 승인 + 상품주문 상태 전이(CANCEL_REQUESTED / RETURN_REQUESTED)</td><td>—</td></tr>
 <tr><td>② payment: 포트원 <b>부분 취소</b> (그 상품주문의 실결제 배분액, <code>payment_cancel</code> 기록, sagaId 멱등)</td><td>실패하면 여기서 멈춤 — 재고 · 포인트는 건드리지 않고 상태를 남겨 복구 스케줄러가 재시도</td></tr>
 <tr><td>③ product: 재고 복원 (취소 · 반품)</td><td>멱등 재시도</td></tr>
-<tr><td>④ user: 그 상품주문분 <code>used_point</code> 환원 + <code>earned_point</code> 회수</td><td>멱등 재시도</td></tr>
+<tr><td>④ user: 그 상품주문분 <code>used_point</code> 환원 (<code>earned_point</code>는 구매확정 때 적립하므로 회수 없음)</td><td>멱등 재시도</td></tr>
 <tr><td>⑤ order: 상품주문 CANCELLED / RETURNED, 클레임 COMPLETED → <code>OrderItemCancelled</code> / <code>OrderItemReturned</code></td><td>—</td></tr>
 </table></div>
 
@@ -1429,8 +1431,8 @@ class PaymentExpiryScheduler {
 
     // 결제 대기 15분 초과: 결제창을 닫았거나, 결제 후 브라우저가 꺼져 [요청 2]가 오지 않은 경우
     // → payment에 결제 상태를 물어(웹훅으로 이미 PAID일 수 있음) PAID면 앞으로 진행, 아니면 보상
-    @Scheduled(fixedDelayString = "${app.scheduler.payment-expiry.fixed-delay}")   // 기본 60s, 시연 때 짧게
-    @SchedulerLock(name = "payment-expiry", lockAtMostFor = "50s")                 // 레플리카 2개여도 한 파드만
+    @Scheduled(fixedDelayString = "${app.scheduler.payment-expiry.interval:20s}")   // 기본 20s (k6 뒤 60s → 20s)
+    @SchedulerLock(name = "payment-expiry", lockAtMostFor = "5m")                  // 레플리카 2개여도 한 파드만 — 한 번 실행 상한 max-run 4m
     void expireWaitingPayments() {
         sagaStore.findWaitingPayment(Duration.ofMinutes(15)).forEach(resolver::resolveByPayment);
     }
@@ -1443,8 +1445,8 @@ class SagaRecoveryScheduler {
     private final PlaceOrderResolver resolver;
 
     // 파드가 Saga 도중 죽어 STARTED/COMPENSATING 으로 남았거나, 보상이 FAILED 로 끝난 경우 → 보상 재시도
-    @Scheduled(fixedDelayString = "${app.scheduler.saga-recovery.fixed-delay}")
-    @SchedulerLock(name = "saga-recovery", lockAtMostFor = "50s")
+    @Scheduled(fixedDelayString = "${app.scheduler.saga-recovery.interval:60s}")
+    @SchedulerLock(name = "saga-recovery", lockAtMostFor = "5m")
     void recoverStuckSagas() {
         sagaStore.findStuck(Duration.ofMinutes(5)).forEach(resolver::retryCompensation);
     }
@@ -1465,30 +1467,34 @@ class SagaRecoveryScheduler {
   circuitbreaker:
     configs:
       default:
-        sliding-window-type: COUNT_BASED
-        sliding-window-size: 10                  # 최근 10번 호출 기준
+        sliding-window-size: 10                  # 최근 10번 호출 기준 (COUNT_BASED 기본)
         minimum-number-of-calls: 5
         failure-rate-threshold: 50               # 절반 이상 실패하면 OPEN
-        slow-call-duration-threshold: 3s         # 읽기 타임아웃과 같게
-        slow-call-rate-threshold: 80
         wait-duration-in-open-state: 10s         # 10초 뒤 HALF_OPEN 으로 몇 번 시험
-        permitted-number-of-calls-in-half-open-state: 2
+        permitted-number-of-calls-in-half-open-state: 3
+      remote:                                    # 다른 서비스 호출 (order/client/*ClientAdapter)
+        base-config: default
         record-exceptions:                       # 장애로 세는 것: 연결 실패 · 타임아웃 · 5xx
           - org.springframework.web.client.ResourceAccessException
           - org.springframework.web.client.HttpServerErrorException
         ignore-exceptions:                       # 상대의 비즈니스 오류(4xx를 변환한 것)는 세지 않음
-          - com.sesac.gojigi.order.common.exception.BusinessException
+          - com.sesac.gojigi.common.web.exception.BusinessException
     instances:
-      user:    { base-config: default }
-      product: { base-config: default }
-      payment: { base-config: default }
+      user:      { base-config: remote }
+      store:     { base-config: remote }
+      product:   { base-config: remote }
+      payment:   { base-config: remote }
+      redisCart: { base-config: default }        # 장바구니 Redis — OPEN 이면 MySQL cart_item 폴백 (09장)
   retry:
-    instances:
-      product-get:                               # 멱등 GET 전용
+    configs:
+      default:                                   # 멱등 GET 전용 (getUser · getStore · getOptions)
         max-attempts: 2
         wait-duration: 200ms
         retry-exceptions:
           - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+    instances:
+      product: { base-config: default }
 
 management:
   endpoint.health.show-details: always
@@ -1518,7 +1524,7 @@ public class ProductClientAdapter {
     }
 
     // 읽기: 멱등 GET이라 재시도 + 서킷 브레이커
-    @Retry(name = "product-get")
+    @Retry(name = "product")
     @CircuitBreaker(name = "product", fallbackMethod = "getStocksFallback")
     public List&lt;StockResponse&gt; getStocks(List&lt;Long&gt; productOptionIds) {
         return productClient.getStocks(productOptionIds);
@@ -1743,7 +1749,7 @@ public class PaymentVerifyService {
 <!-- ============================================================ 06 -->
 <section id="s6">
 <h2><span class="n">08</span>인증 · 인가: Gateway + Keycloak</h2>
-<p class="lead">결론: <b>Keycloak이 계정 · 역할 · 토큰 · 세션을 맡는 IdP</b>이고, <b>Spring Cloud Gateway가 Keycloak 토큰을 검증</b>해 사용자 헤더를 붙입니다. 로그인 · 가입 화면은 <b>우리 React 페이지</b>이며, user-service가 Keycloak을 대신 호출합니다(password grant · Admin API). Keycloak은 클러스터 내부 전용입니다. 담당: <b>이경석</b>.</p>
+<p class="lead">결론: <b>Keycloak이 계정 · 역할 · 토큰 · 세션을 맡는 IdP</b>이고, <b>Spring Cloud Gateway가 Keycloak 토큰을 검증</b>해 사용자 헤더를 붙입니다. 로그인 · 가입 화면은 <b>우리 React 페이지</b>이며, user-service가 Keycloak을 대신 호출합니다(password grant · Admin API). Keycloak 관리 콘솔은 클러스터 내부 전용이고, 소셜 로그인 화면(<code>/realms/gotgan/**</code>)만 gateway 경유로 공개합니다. 담당: <b>이경석</b>.</p>
 
 <h3>방식 비교 · 결정</h3>
 <div class="tbl"><table>
@@ -1782,7 +1788,7 @@ Cognito는 검토했으나 제외했습니다. 서버리스를 배치 · 로깅�
 <tr><td>이메일 · 비밀번호 · 역할(BUYER · SELLER · ADMIN) · 속성 <code>user_id</code> · <code>store_id</code></td><td>Keycloak</td><td rowspan="2"><code>users.keycloak_id</code>(Keycloak 사용자 ID) ↔ Keycloak 속성 <code>user_id</code>(userdb의 BIGINT)</td></tr>
 <tr><td>이름 · 전화 · 배송지 · 포인트 · 회원등급</td><td>user-service (<code>userdb</code>)</td></tr>
 </table></div>
-<p>브라우저는 Keycloak을 직접 부르지 않습니다. 토큰을 받는 쪽도, 토큰 발급을 요청하는 쪽도 user-service 하나이므로 토큰의 발급자(<code>iss</code>)가 항상 <code>http://keycloak:8080/realms/gotgan</code>으로 고정됩니다.</p>
+<p>자체 로그인에서는 브라우저가 Keycloak을 직접 부르지 않습니다(소셜 로그인만 Keycloak 화면을 거침). 토큰의 발급자(<code>iss</code>)는 공개 주소 <code>https://api.gotgan.click/realms/gotgan</code>으로 고정됩니다 — <code>KC_HOSTNAME=https://api.gotgan.click</code> + <code>KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true</code>라 서버 간 호출(user-service 토큰 · Admin API, gateway JWKS)은 내부 주소 <code>http://keycloak:8080</code> 그대로 쓰면서도 <code>iss</code>는 같습니다.</p>
 
 <h3>흐름</h3>
 <h4>가입 — <code>POST /api/auth/signup</code></h4>
@@ -1842,7 +1848,7 @@ Cognito는 검토했으나 제외했습니다. 서버리스를 배치 · 로깅�
 </table></div>
 <p class="cap">Access Token 클레임 예 (필요한 것만)</p>
 <pre><code>{
-  "iss": "http://keycloak:8080/realms/gotgan",
+  "iss": "https://api.gotgan.click/realms/gotgan",
   "sub": "5d1c...-keycloak-uuid",
   "jti": "a8f0...",
   "exp": 1760253153,
@@ -1869,10 +1875,10 @@ OAuth 2.1은 password grant를 <b>비권장</b>합니다. 표준은 Keycloak 로
 <li><b>자체 로그인 · 가입 화면</b>을 목업 디자인 그대로 쓰기로 했습니다.</li>
 <li><b>토큰은 서버(user-service)만 다룹니다.</b> client secret은 서버에만 있고, Refresh Token은 httpOnly 쿠키로만 나갑니다.</li>
 </ul>
-대신 잃는 것: 소셜 로그인 · MFA · SSO 같은 Keycloak 화면 기능은 쓰지 않습니다(범위 밖). 소셜 로그인을 넣는다면 아래 "소셜 로그인" 절처럼 <b>그 경로만</b> Authorization Code로 추가합니다. 실무에서 외부 앱이 붙는 구조라면 Authorization Code + PKCE로 바꿉니다(20장).</div>
+대신 잃는 것: MFA · SSO 같은 Keycloak 화면 기능은 쓰지 않습니다(범위 밖). 소셜 로그인은 아래 "소셜 로그인" 절처럼 <b>그 경로만</b> Authorization Code로 추가했습니다. 실무에서 외부 앱이 붙는 구조라면 Authorization Code + PKCE로 바꿉니다(20장).</div>
 
-<h3>소셜 로그인 (USR-12) — 넣을 때의 설계</h3>
-<p><b>상태: 미구현 · 범위 밖</b>(스펙 USR-12 "제외"). 사전 조건이던 Keycloak HTTPS 공개 주소는 10/20 <code>api.gotgan.click</code>(Route 53 · ACM · NLB 443)으로 확보했습니다. 소셜은 <b>추가만 하는 방식</b>이라 토큰 클레임(<code>user_id</code> · <code>roles</code> · <code>store_id</code>) · 게이트웨이 · 업무 서비스 · Refresh Token 쿠키는 그대로입니다. 세부 체크리스트는 gotgan-config <code>deploy/k8s/keycloak/README.md</code> "소셜 로그인". 담당: <b>이경석</b>.</p>
+<h3>소셜 로그인 (USR-12) — 구현된 설계</h3>
+<p><b>상태: 구현</b> — 구글 · 카카오 · 네이버(realm Identity Provider 3개, user-service <code>GET /api/auth/social/{provider}</code> · <code>/api/auth/social/callback</code>, 프론트 <code>SocialLoginButtons</code> · <code>SocialCallback</code>). Keycloak HTTPS 공개 주소는 10/20 <code>api.gotgan.click</code>(Route 53 · ACM · NLB 443)을 씁니다. 소셜은 <b>추가만 하는 방식</b>이라 토큰 클레임(<code>user_id</code> · <code>roles</code> · <code>store_id</code>) · 게이트웨이 · 업무 서비스 · Refresh Token 쿠키는 그대로입니다. 세부 체크리스트는 gotgan-config <code>deploy/k8s/keycloak/README.md</code> "소셜 로그인". 담당: <b>이경석</b>.</p>
 <h4>흐름 — 카카오 · 네이버 · 구글 공통</h4>
 <div class="tbl"><table>
 <tr><th>#</th><th>주체</th><th>하는 일</th></tr>
@@ -1889,7 +1895,7 @@ OAuth 2.1은 password grant를 <b>비권장</b>합니다. 표준은 Keycloak 로
 <tr><th>영역</th><th>추가 작업</th></tr>
 <tr><td>Keycloak realm</td><td>Identity Provider 3개 — 구글은 기본 제공, 카카오는 OpenID Connect 공급자로 등록, 네이버는 OIDC를 지원하지 않아 확장(커뮤니티 제공자) 필요. 클라이언트 <code>gotgan-backend</code>에 Standard Flow 켬 + 리다이렉트 URI(<code>/api/auth/social/callback</code>) 등록</td></tr>
 <tr><td>Keycloak 주소</td><td>제공자가 브라우저를 보내는 곳이라 공개 주소 필요 → <code>KC_HOSTNAME=https://api.gotgan.click</code>. 토큰 <code>iss</code>가 바뀌므로 게이트웨이 <code>issuer-uri</code>도 함께 변경(공개키 JWKS는 내부 <code>http://keycloak:8080</code>에서)</td></tr>
-<tr><td>게이트웨이</td><td><code>/realms/**</code> → keycloak 라우트 + permitAll. 관리 콘솔 <code>/admin/**</code>은 계속 노출하지 않음</td></tr>
+<tr><td>게이트웨이</td><td><code>/realms/gotgan/**</code> · <code>/resources/**</code> → keycloak 라우트 + permitAll. 계정 콘솔 <code>/realms/gotgan/account/**</code> · 동적 클라이언트 등록은 denyAll, 관리 콘솔 · master realm 은 라우트 없음</td></tr>
 <tr><td>시크릿</td><td>제공자별 client ID · secret 3쌍 — GitHub Secrets → secrets-sync → <code>keycloak-secret</code>, realm JSON에는 자리표시자만 (client secret과 같은 방식)</td></tr>
 <tr><td>프론트</td><td>소셜 버튼 3개 · 콜백 페이지(<code>/auth/callback</code>) — 로그인 이후 흐름은 그대로</td></tr>
 </table></div>
@@ -1909,8 +1915,8 @@ OAuth 2.1은 password grant를 <b>비권장</b>합니다. 표준은 Keycloak 로
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://keycloak:8080/realms/gotgan          # 토큰 iss와 글자까지 같아야 함
-          jwk-set-uri: http://keycloak:8080/realms/gotgan/protocol/openid-connect/certs   # 기동 시 discovery 생략</code></pre>
+          issuer-uri: ${KEYCLOAK_ISSUER}                          # https://api.gotgan.click/realms/gotgan — 토큰 iss와 글자까지 같아야 함
+          jwk-set-uri: ${KEYCLOAK_URI}/realms/gotgan/protocol/openid-connect/certs   # 내부 http://keycloak:8080 — 기동 시 discovery 생략</code></pre>
 <p class="cap">gateway-service SecurityConfig.java — 경로 규칙은 03장 API 경로 · 라우팅 표와 같게</p>
 <pre><code>@Configuration
 @EnableWebFluxSecurity
@@ -1921,16 +1927,22 @@ public class SecurityConfig {
         return http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .authorizeExchange(auth -&gt; auth
+                        .pathMatchers(HttpMethod.OPTIONS, "/api/notifications/stream").permitAll()   // 실시간 알림 CORS preflight
+                        .pathMatchers(HttpMethod.GET, "/ws/chat").permitAll()                  // 채팅 WebSocket 핸드셰이크 — 토큰은 STOMP CONNECT
                         .pathMatchers("/api/auth/**").permitAll()                              // 가입 · 로그인 · refresh · 로그아웃
                         .pathMatchers(HttpMethod.POST, "/api/payments/webhook").permitAll()      // 포트원 웹훅 (서명은 payment가 검증)
                         .pathMatchers("/actuator/health/**").permitAll()
                         .pathMatchers("/actuator/prometheus").access(metricsAccessManager)   // 클러스터 노드 대역만(11/3)
+                        .pathMatchers("/realms/gotgan/account", "/realms/gotgan/account/**",
+                                "/realms/gotgan/clients-registrations/**").denyAll()          // Keycloak 계정 콘솔 차단
+                        .pathMatchers("/realms/gotgan/**", "/resources/**").permitAll()      // 소셜 로그인 화면
                         .pathMatchers(HttpMethod.GET,
                                 "/api/products/**", "/api/categories/**", "/api/stores/**",
                                 "/api/reviews/**", "/api/inquiries/**").permitAll()
                         .pathMatchers("/api/seller/apply/**").hasRole("BUYER")                 // 입점 신청 (seller/** 보다 먼저)
                         .pathMatchers("/api/seller/**").hasRole("SELLER")
                         .pathMatchers("/api/admin/**").hasRole("ADMIN")                        // 관리자 API 전부 → admin-service
+                        .pathMatchers("/api/reports/**").hasAnyRole("BUYER", "SELLER")         // 신고 접수 → admin-service
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(o -&gt; o.jwt(jwt -&gt; jwt.jwtAuthenticationConverter(rolesConverter())))
                 .build();
@@ -1992,7 +2004,7 @@ public class UserHeaderFilter implements GlobalFilter, Ordered {
 <ul>
 <li>Spring Security 7(Boot 4)에서는 <code>.and()</code> 체이닝이 없고 람다 DSL만 됩니다. Boot 2 시절 블로그 코드를 복사하면 컴파일되지 않습니다.</li>
 <li>게이트웨이는 WebFlux입니다. <code>@EnableWebSecurity</code>/<code>HttpSecurity</code>(MVC용)가 아니라 <code>@EnableWebFluxSecurity</code>/<code>ServerHttpSecurity</code>를 씁니다.</li>
-<li><b>issuer 불일치로 전부 401</b>: 토큰의 <code>iss</code>는 "토큰을 요청한 주소"로 정해집니다. Keycloak에 <code>KC_HOSTNAME=http://keycloak:8080</code>을 고정하고, port-forward한 <code>localhost:8080</code>으로 받은 토큰을 게이트웨이 테스트에 쓰지 마세요.</li>
+<li><b>issuer 불일치로 전부 401</b>: <code>KC_HOSTNAME</code>이 없으면 토큰의 <code>iss</code>는 "토큰을 요청한 주소"로 정해집니다. 그래서 Keycloak에 <code>KC_HOSTNAME=https://api.gotgan.click</code>을 고정하고 gateway <code>KEYCLOAK_ISSUER</code>를 같은 값으로 둡니다(01-configmap). port-forward한 관리 콘솔(<code>localhost:8080</code>)에서 받은 토큰을 게이트웨이 테스트에 쓰지 마세요.</li>
 <li><b>역할이 안 읽힘(403)</b>: Keycloak 기본 클레임은 <code>realm_access.roles</code>입니다. <code>roles</code> 매퍼를 추가했는지, 역할 이름에 <code>ROLE_</code>을 붙여 저장하지 않았는지(<code>hasRole</code>이 붙여 줌) 확인합니다.</li>
 <li>내부 서비스가 헤더를 믿는 전제는 "게이트웨이를 거치지 않으면 닿지 않는다"입니다. 업무 서비스와 Keycloak의 Service 타입은 반드시 <b>ClusterIP</b>로 두세요.</li>
 <li>Admin API의 사용자 수정(<code>PUT /users/{id}</code>)은 속성을 <b>통째로 교체</b>합니다. <code>store_id</code>를 넣을 때 기존 <code>user_id</code>가 지워지지 않게 조회 후 합쳐서 보냅니다.</li>
@@ -2002,13 +2014,13 @@ public class UserHeaderFilter implements GlobalFilter, Ordered {
 <div class="tbl"><table>
 <tr><th>항목</th><th>설정</th></tr>
 <tr><td>형태</td><td>EKS <code>sesac-gojigi</code> 네임스페이스 Deployment 1개 + Service <code>keycloak</code>(ClusterIP, 8080). Ingress · LoadBalancer 없음</td></tr>
-<tr><td>이미지 · 실행</td><td><code>quay.io/keycloak/keycloak</code>(26.x, 작성 시점 최신 패치 확인) · <code>start --import-realm</code>. 기동을 줄이려면 <code>kc.sh build</code>로 미리 빌드한 이미지 + <code>start --optimized</code></td></tr>
+<tr><td>이미지 · 실행</td><td><code>quay.io/keycloak/keycloak:26.8.2</code>(패치 번호까지 고정 — 11/6 움직이는 태그 26.8 로 Admin API 401 사례) · <code>start --import-realm</code>. 기동을 줄이려면 <code>kc.sh build</code>로 미리 빌드한 이미지 + <code>start --optimized</code></td></tr>
 <tr><td>DB</td><td><code>KC_DB=mysql</code> · <code>KC_DB_URL=jdbc:mysql://mysql:3306/keycloakdb</code> · 전용 계정(<code>KC_DB_USERNAME</code> · <code>KC_DB_PASSWORD</code>는 <code>keycloak-secret</code>, secrets-sync 생성)</td></tr>
-<tr><td>주소 · HTTP</td><td><code>KC_HOSTNAME=http://keycloak:8080</code>(issuer 고정) · <code>KC_HTTP_ENABLED=true</code>(클러스터 내부 HTTP)</td></tr>
+<tr><td>주소 · HTTP</td><td><code>KC_HOSTNAME=https://api.gotgan.click</code>(issuer 고정) · <code>KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true</code>(서버 간 호출은 내부 주소) · <code>KC_HOSTNAME_ADMIN=http://localhost:8080</code>(관리 콘솔은 port-forward 로만) · <code>KC_HTTP_ENABLED=true</code>(클러스터 내부 HTTP) · <code>KC_DB_POOL_MAX_SIZE=30</code>(11/4 k6)</td></tr>
 <tr><td>헬스</td><td><code>KC_HEALTH_ENABLED=true</code> → 관리 포트 9000의 <code>/health/started</code> · <code>/health/ready</code> · <code>/health/live</code>를 startup · readiness · liveness probe로</td></tr>
-<tr><td>자원</td><td>메모리 requests · limits <b>1Gi</b> (04장 파드 예산 포함). JVM 기동이 30~60초라 startupProbe 여유 있게</td></tr>
+<tr><td>자원</td><td>requests CPU 500m · 메모리 <b>1Gi</b>, limits 메모리 1536Mi(CPU limit 없음 — 11/4 k6 60 VU 최대 1,544m) (04장 파드 예산 포함). JVM 기동이 30~60초라 startupProbe 여유 있게(5s × 60)</td></tr>
 <tr><td>Realm import</td><td><code>deploy/k8s/keycloak/realm-gotgan.json</code> → ConfigMap → <code>/opt/keycloak/data/import</code> 마운트. 이미 realm이 있으면 import를 건너뜀 → 설정을 바꾸면 콘솔에서 고친 뒤 <b>다시 export해 Git에 커밋</b></td></tr>
-<tr><td>관리 콘솔</td><td><code>kubectl -n sesac-gojigi port-forward svc/keycloak 8180:8080</code> → <code>http://localhost:8180</code> (8081은 user-service 포트). 초기 관리자는 <code>KC_BOOTSTRAP_ADMIN_USERNAME</code> · <code>KC_BOOTSTRAP_ADMIN_PASSWORD</code>(<code>keycloak-secret</code>, GitHub Secrets <code>KEYCLOAK_ADMIN_*</code>)</td></tr>
+<tr><td>관리 콘솔</td><td><code>kubectl -n sesac-gojigi port-forward svc/keycloak 8080:8080</code> → <code>http://localhost:8080</code> (로컬 8080 고정 — <code>KC_HOSTNAME_ADMIN</code>). 초기 관리자는 <code>KC_BOOTSTRAP_ADMIN_USERNAME</code> · <code>KC_BOOTSTRAP_ADMIN_PASSWORD</code>(<code>keycloak-secret</code>, GitHub Secrets <code>KEYCLOAK_ADMIN_*</code>)</td></tr>
 <tr><td>로컬 개발</td><td>docker-compose에 같은 이미지 + 같은 realm JSON. 로컬에서도 서비스 이름 <code>keycloak</code>으로 접근해 issuer를 맞춤</td></tr>
 </table></div>
 <p class="cap">deploy/k8s/keycloak/keycloak.yaml (핵심만)</p>
@@ -2019,7 +2031,10 @@ public class UserHeaderFilter implements GlobalFilter, Ordered {
     env:
       - { name: KC_DB, value: mysql }
       - { name: KC_DB_URL, value: "jdbc:mysql://mysql:3306/keycloakdb" }
-      - { name: KC_HOSTNAME, value: "http://keycloak:8080" }
+      - { name: KC_DB_POOL_MAX_SIZE, value: "30" }              # 기본 100 — 11/4 k6 로그인 100 동시에 MySQL 연결 상한
+      - { name: KC_HOSTNAME, value: "https://api.gotgan.click" } # 공개 주소 — 토큰 iss (gateway KEYCLOAK_ISSUER 와 같게)
+      - { name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC, value: "true" } # 서버 간 호출은 내부 http://keycloak:8080
+      - { name: KC_HOSTNAME_ADMIN, value: "http://localhost:8080" } # 관리 콘솔은 port-forward 로만
       - { name: KC_HTTP_ENABLED, value: "true" }
       - { name: KC_HEALTH_ENABLED, value: "true" }
     envFrom:
@@ -2028,9 +2043,9 @@ public class UserHeaderFilter implements GlobalFilter, Ordered {
       - { containerPort: 8080 }
       - { containerPort: 9000, name: management }
     resources:
-      requests: { memory: 1Gi, cpu: 250m }
-      limits:   { memory: 1Gi }
-    startupProbe:   { httpGet: { path: /health/started, port: 9000 }, failureThreshold: 30, periodSeconds: 5 }
+      requests: { cpu: 500m, memory: 1Gi }
+      limits:   { memory: 1536Mi }
+    startupProbe:   { httpGet: { path: /health/started, port: 9000 }, failureThreshold: 60, periodSeconds: 5 }
     readinessProbe: { httpGet: { path: /health/ready,   port: 9000 } }
     livenessProbe:  { httpGet: { path: /health/live,    port: 9000 } }
     volumeMounts:
@@ -2040,13 +2055,14 @@ public class UserHeaderFilter implements GlobalFilter, Ordered {
 <!-- ============================================================ 07 -->
 <section id="s7">
 <h2><span class="n">09</span>Redis · DynamoDB 활용처</h2>
-<p class="lead">세 저장소의 역할: <b>MySQL</b>은 서비스의 원본 데이터, <b>Redis</b>는 빠르고 사라져도 되는(또는 TTL이 있는) 데이터, <b>DynamoDB</b>는 서버 없이 키로 바로 찾는 데이터(Lambda 쪽). 이번 범위에서 Redis는 2곳(장바구니 캐시 · 차단 목록), DynamoDB는 테이블 2개만 씁니다. 장바구니도 <b>원본은 MySQL</b>이고 Redis는 캐시입니다.</p>
+<p class="lead">세 저장소의 역할: <b>MySQL</b>은 서비스의 원본 데이터, <b>Redis</b>는 빠르고 사라져도 되는(또는 TTL이 있는) 데이터, <b>DynamoDB</b>는 서버 없이 키로 바로 찾는 데이터(Lambda 쪽). 이번 범위에서 Redis는 장바구니 캐시 · 게이트웨이 요청 제한(10/27) · 알림 센터 · 채팅 실시간 중계(10/27)에 쓰고(차단 목록은 Could — 만들지 않음), DynamoDB는 테이블 3개(알림함 inbox 10/27 포함)만 씁니다. 장바구니도 <b>원본은 MySQL</b>이고 Redis는 캐시입니다.</p>
 
 <h3>Redis — 장바구니 캐시 + (선택) 로그아웃 차단 목록 + 실시간 중계(10/27)</h3>
 <div class="tbl"><table>
 <tr><th>용도</th><th>소유 서비스</th><th>키 · 구조</th><th>TTL</th><th>원본</th><th>우선순위</th></tr>
 <tr><td>장바구니 <b>캐시</b></td><td>order</td><td><code>cart:{userId}</code> Hash (field=optionId, value=수량)</td><td>30일 (담을 때마다 연장)</td><td>MySQL <code>orderdb.cart_item</code>(06장)</td><td><span class="tag must">Must</span></td></tr>
-<tr><td>Access Token 차단 목록 (로그아웃 즉시 무효)</td><td>gateway (기록은 user-service 로그아웃 시)</td><td><code>blacklist:{jti}</code></td><td>토큰 남은 수명 (최대 30분)</td><td>없음 (Redis 전용)</td><td><span class="tag could">Could</span></td></tr>
+<tr><td>Access Token 차단 목록 (로그아웃 즉시 무효)</td><td>gateway (기록은 user-service 로그아웃 시)</td><td><code>blacklist:{jti}</code></td><td>토큰 남은 수명 (최대 30분)</td><td>없음 (Redis 전용)</td><td><span class="tag could">Could</span> 미구현 — 로그아웃은 Keycloak 세션 · Refresh Token 폐기까지</td></tr>
+<tr><td>요청 제한 (10/27)</td><td>gateway</td><td>Spring Cloud Gateway <code>RedisRateLimiter</code> 토큰 버킷(키는 로그인 사용자 · IP) — POST 로그인 · 가입은 분당 30회, 나머지 API 는 초당 20회(몰아서 40회)</td><td>자동</td><td>없음 (Redis 전용 — Redis 응답이 500ms 넘으면 통과)</td><td><span class="tag could">Could</span></td></tr>
 <tr><td>알림 센터 실시간 전달 (10/27)</td><td>admin</td><td>Pub/Sub 채널 <code>notify:{받는 쪽}</code>(<code>USER#{id}</code> · <code>STORE#{id}</code> · <code>ADMIN</code>) — 모든 파드가 자기 SSE 연결에 전달</td><td>없음 (메시지)</td><td>DynamoDB <code>sesac-gojigi-inbox</code></td><td><span class="tag could">Could</span></td></tr>
 <tr><td>1:1 채팅 파드 간 중계 (10/27)</td><td>chat</td><td>Pub/Sub 채널 <code>chat:room:{roomId}</code> — 파드당 패턴 구독 <code>chat:room:*</code> 1개</td><td>없음 (메시지)</td><td>MySQL <code>chatdb.chat_message</code></td><td><span class="tag could">Could</span></td></tr>
 <tr><td>채팅 접속 중 표시 (10/27)</td><td>chat</td><td><code>chat:presence:{roomId}</code> ZSET (점수 = 만료 시각, 살아 있는 구독은 20초마다 연장) — 보고 있는 쪽엔 알림을 보내지 않음</td><td>60초</td><td>없음 (Redis 전용 — 확인 실패면 알림을 보냄)</td><td><span class="tag could">Could</span></td></tr>
@@ -2056,7 +2072,7 @@ public class UserHeaderFilter implements GlobalFilter, Ordered {
 <tr><th>경로</th><th>동작</th><th>Redis 장애 시</th></tr>
 <tr><td>쓰기 (담기 · 수량 변경 · 체크 · 삭제)</td><td><b>MySQL 먼저</b> 커밋 → Redis 해시 갱신 (write-through)</td><td>Redis 갱신 실패는 <b>무시하고 WARN 로그만</b> — 다음 읽기에서 MySQL로 다시 채워지므로 데이터는 안 어긋남</td></tr>
 <tr><td>읽기 (장바구니 조회 · 주문서)</td><td>Redis 조회 → 미스면 MySQL 조회 후 Redis에 채움 (read-through)</td><td>서킷이 열리면 Redis를 건너뛰고 <b>MySQL만 조회</b> — 결과는 같고 지연만 늘어남</td></tr>
-<tr><td>Redis 호출 보호</td><td>Resilience4j 서킷 브레이커 인스턴스 <code>redisCart</code> + 폴백 메서드 (06장 표준과 같은 방식, 대상이 서비스가 아니라 Redis)</td><td>타임아웃 · 연결 실패가 쌓이면 OPEN → 즉시 폴백(fast-fail), 30초 뒤 HALF_OPEN으로 복구 확인. 상태는 Grafana 서킷 패널에 보임 → 13장 시연 ⑦</td></tr>
+<tr><td>Redis 호출 보호</td><td>Resilience4j 서킷 브레이커 인스턴스 <code>redisCart</code> + 폴백 메서드 (06장 표준과 같은 방식, 대상이 서비스가 아니라 Redis)</td><td>타임아웃 · 연결 실패가 쌓이면 OPEN → 즉시 폴백(fast-fail), 10초 뒤 HALF_OPEN으로 복구 확인(06장 <code>default</code> 설정). 상태는 Grafana 서킷 패널에 보임 → 13장 시연 ⑦</td></tr>
 <tr><td>인프라</td><td>Redis에 <b>AOF(<code>appendonly yes</code>) + PVC(<code>ebs-sc</code> 1Gi)</b> — <b>EBS 볼륨(gp3 디스크)</b>이지 ElastiCache가 아님. MySQL과 함께 <code>db</code> 노드(t3.medium, 2a)에 뜨고, NetworkPolicy로 백 티어 파드만 6379에 접근(04장). <code>maxmemory 200mb</code> · <code>noeviction</code>(가득 차면 지우지 않고 쓰기 오류)</td><td>파드 재시작 · 노드 교체에도 캐시 유지 (매일 22:00 클러스터 삭제 뒤에는 MySQL 원본에서 다시 채움)</td></tr>
 </table></div>
 <p class="cap">order-service <code>cart</code> 패키지 — 읽기 경로 + 폴백 (핵심만)</p>
@@ -2113,17 +2129,11 @@ public class CartService {
 resilience4j:
   circuitbreaker:
     instances:
-      redisCart:
-        slidingWindowSize: 10
-        failureRateThreshold: 50
-        waitDurationInOpenState: 30s
-        recordExceptions:
-          - org.springframework.data.redis.RedisConnectionFailureException
-          - org.springframework.dao.QueryTimeoutException</code></pre>
+      redisCart: { base-config: default }   # 최근 10건 중 50% 실패 → OPEN, 10초 뒤 HALF_OPEN (06장 default)</code></pre>
 <p><code>CartRedisRepository</code>의 쓰기 메서드에도 같은 <code>redisCart</code> 인스턴스를 적용해, 서킷이 열린 동안은 캐시 갱신 시도 자체를 즉시 건너뜁니다(매 요청마다 0.5초씩 기다리지 않음). <code>checked</code>(주문서 포함 여부)처럼 자주 안 바뀌는 값은 MySQL에만 두고, Redis 해시에는 "옵션 → 수량"만 둡니다.</p>
 <p>리프레시 토큰은 Redis에 두지 않습니다. 토큰 · 세션은 Keycloak이 관리합니다(08장). <code>blacklist:{jti}</code>(Could)는 원본 없이 Redis 전용입니다 — Redis가 죽어 있는 동안은 즉시 무효화가 안 되고 토큰 만료(최대 30분)까지만 유효한데, Could 기능이라 감수합니다.</p>
 <div class="box rec"><b class="t">Redis 하나를 여러 서비스가 쓸 때</b>
-물리 Redis 1대를 공유하더라도 <b>키 접두어를 서비스별로 고정</b>(order는 <code>cart:*</code>, gateway는 <code>blacklist:*</code>, chat은 <code>chat:*</code>, admin은 <code>notify:*</code>)하세요. 더 엄격하게 하려면 Redis 6+ ACL로 서비스 계정마다 키 패턴을 제한할 수 있습니다(<code>ACL SETUSER order on &gt;pw ~cart:* +@all</code>).</div>
+물리 Redis 1대를 공유하더라도 <b>키 접두어를 서비스별로 고정</b>(order는 <code>cart:*</code>, gateway는 <code>request_rate_limiter.*</code>, chat은 <code>chat:*</code>, admin은 <code>notify:*</code>)하세요. 더 엄격하게 하려면 Redis 6+ ACL로 서비스 계정마다 키 패턴을 제한할 수 있습니다(<code>ACL SETUSER order on &gt;pw ~cart:* +@all</code>).</div>
 <p><b>Redis를 쓰지 않을 곳:</b> 재고 차감(06장의 조건부 UPDATE로 충분), 토큰 · 세션(Keycloak), 주문 데이터(영속성 필요).</p>
 <div class="box warn"><b class="t">조회 캐시는 이번 범위에서 제외</b>
 상품 상세 캐시(<code>@Cacheable</code>) 같은 조회 캐시는 쓰지 않습니다. 데모 규모에서는 MySQL 조회로 충분하고, 캐시 무효화 버그가 핵심 시연(장애 격리 · 무중단 배포)을 흐리게 만들 수 있습니다. 장바구니 캐시는 예외입니다 — 성능이 아니라 "Redis가 죽어도 장바구니가 산다"를 위해 원본을 MySQL로 옮기면서 Redis가 캐시가 된 것이고, 해시 한 종류 · 사용자 단위 무효화라 버그 여지가 작습니다. 실무에서 캐시 · 읽기 모델을 어떻게 쓰는지는 20장에서 설명합니다.</div>
@@ -2161,15 +2171,15 @@ resilience4j:
 <pre><code>resource "aws_dynamodb_table" "notifications" {
   name         = "sesac-gojigi-notifications"
   billing_mode = "PAY_PER_REQUEST"      # 요청한 만큼만 과금. 이 규모면 거의 무료
-  hash_key     = "pk"
-  range_key    = "sk"
+  hash_key     = "PK"
+  range_key    = "SK"
 
   attribute {
-    name = "pk"
+    name = "PK"
     type = "S"
   }
   attribute {
-    name = "sk"
+    name = "SK"
     type = "S"
   }
 
@@ -2181,7 +2191,7 @@ resilience4j:
 <div class="box warn"><b class="t">DynamoDB를 쓸 때 주의</b>
 <ul>
 <li><b>접근 패턴을 먼저 정하고 키를 설계</b>합니다. "PK 없이 조건으로 찾기"(Scan)는 느리고 비쌉니다. 필요한 조회가 PK/SK로 안 되면 그 데이터는 MySQL이 맞습니다.</li>
-<li>권한은 테이블 단위로 최소화: 알림 Lambda는 notifications 테이블의 <code>GetItem</code>/<code>PutItem</code>만(11장 serverless.yml).</li>
+<li>권한은 테이블 단위로 최소화: 알림 Lambda는 notifications 테이블의 <code>PutItem</code>(조건부 선점)/<code>UpdateItem</code>(발송 완료)만(11장 serverless.yml).</li>
 <li>로컬 개발은 실제 dev 테이블을 쓰거나 DynamoDB Local(Docker 이미지)을 씁니다.</li>
 </ul></div>
 <div class="box prod"><b class="t">실무에서는</b>
@@ -2198,9 +2208,10 @@ DynamoDB는 "접근 패턴을 먼저 정하고 키를 설계"합니다(Single Ta
 <tr><th>이벤트</th><th>발행</th><th>구독</th><th>구독자가 하는 일</th></tr>
 <tr><td><code>StoreApproved</code></td><td>store</td><td>user · settlement · 알림 Lambda · admin(알림 센터)</td><td>Keycloak에 SELLER 역할 · <code>store_id</code> 부여(08장) / settlement: 스토어명 · 정산 계좌 스냅샷(지급 시 store 동기 호출 없음) / 입점 승인 메일 / admin 알림함(10/27). payload: storeId · userId · storeName · sellerEmail · settlementAccount</td></tr>
 <tr><td><code>StoreStatusChanged</code> (정지 · 폐점)</td><td>store</td><td>product · settlement</td><td>스토어 상품 노출 숨김 / 지급 보류</td></tr>
-<tr><td><code>OrderPaid</code></td><td>order</td><td>user · 알림 Lambda · admin(알림 센터)</td><td>실결제금액의 <b>5% 포인트 적립</b> / 주문 확인 메일 / 알림함</td></tr>
+<tr><td><code>OrderPaid</code></td><td>order</td><td>알림 Lambda · admin(알림 센터)</td><td>주문 확인 메일 / 알림함 (포인트 적립은 <code>OrderItemConfirmed</code>로 옮김, 10/29)</td></tr>
 <tr><td><code>OrderItemShipped</code></td><td>order</td><td>알림 Lambda · admin(알림 센터)</td><td>배송 시작 메일(택배사 · 송장번호) / 알림함</td></tr>
-<tr><td><code>OrderItemConfirmed</code></td><td>order</td><td>settlement · review · user</td><td>정산 대상 적재 / <b>리뷰 작성 자격 저장</b> / 누적 구매확정 금액 → <b>회원등급 갱신</b></td></tr>
+<tr><td><code>OrderItemDelivered</code></td><td>order</td><td>알림 Lambda</td><td>배송 완료 메일(11/02)</td></tr>
+<tr><td><code>OrderItemConfirmed</code></td><td>order</td><td>settlement · review · user</td><td>정산 대상 적재 / <b>리뷰 작성 자격 저장</b> / <b>5% 포인트 적립</b>(상품주문 <code>earned_point</code>, 10/29) · 누적 구매확정 금액 → <b>회원등급 갱신</b></td></tr>
 <tr><td><code>OrderItemCancelled</code></td><td>order</td><td>알림 Lambda · admin(알림 센터)</td><td>취소 완료 메일 / 알림함</td></tr>
 <tr><td><code>OrderItemReturned</code></td><td>order</td><td>알림 Lambda · admin(알림 센터)</td><td>반품 완료 메일 / 알림함</td></tr>
 <tr><td><code>OrderClaimRequested</code></td><td>order</td><td>admin(알림 센터)</td><td>반품 · 교환 요청을 판매자에게 <code>CLAIM_REQUESTED</code> 화면 알림(11/5)</td></tr>
@@ -2239,8 +2250,8 @@ DynamoDB는 "접근 패턴을 먼저 정하고 키를 설계"합니다(Single Ta
 <tr><td rowspan="5"><code>sesac-gojigi-order-events</code></td><td><code>sesac-gojigi-user-order-events</code></td><td>OrderItemConfirmed (포인트 적립은 구매확정 — OrderPaid 는 받지 않음, 10/29)</td></tr>
 <tr><td><code>sesac-gojigi-settlement-order-events</code></td><td>OrderItemConfirmed</td></tr>
 <tr><td><code>sesac-gojigi-review-order-events</code></td><td>OrderItemConfirmed (리뷰 작성 자격)</td></tr>
-<tr><td><code>sesac-gojigi-notification-order-events</code></td><td>OrderPaid · OrderItemShipped · OrderItemCancelled · OrderItemReturned</td></tr>
-<tr><td><code>sesac-gojigi-admin-order-events</code></td><td>위 4종 (알림 센터, 10/27) + OrderClaimRequested (11/5)</td></tr>
+<tr><td><code>sesac-gojigi-notification-order-events</code></td><td>OrderPaid · OrderItemShipped · OrderItemDelivered(11/02) · OrderItemCancelled · OrderItemReturned</td></tr>
+<tr><td><code>sesac-gojigi-admin-order-events</code></td><td>OrderPaid · OrderItemShipped · OrderItemCancelled · OrderItemReturned (알림 센터, 10/27) + OrderClaimRequested (11/5)</td></tr>
 <tr><td rowspan="2"><code>sesac-gojigi-settlement-events</code></td><td><code>sesac-gojigi-report-settlement-events</code></td><td>SettlementPaid</td></tr>
 <tr><td><code>sesac-gojigi-admin-settlement-events</code></td><td>SettlementPaid (알림 센터, 10/27)</td></tr>
 </table></div>
@@ -2257,7 +2268,7 @@ DynamoDB는 "접근 패턴을 먼저 정하고 키를 설계"합니다(Single Ta
 <div class="grid2">
 <div class="card"><h4>발행: 커밋된 뒤에만</h4>
 <p><b>1단계(기본)</b> — <code>@TransactionalEventListener(phase = AFTER_COMMIT)</code>에서 SNS로 발행. 롤백된 주문의 이벤트가 나가지 않습니다. 단, 커밋 직후 파드가 죽으면 이벤트가 유실될 수 있습니다.</p>
-<p><b>2단계(Could)</b> — Transactional Outbox: 같은 트랜잭션에서 <code>outbox_event</code>에 INSERT → 스케줄러가 2초마다 NEW를 읽어 SNS 발행 후 SENT. 유실이 없습니다.</p></div>
+<p><b>2단계(구현 — order · store · settlement)</b> — Transactional Outbox: 같은 트랜잭션에서 아웃박스 테이블(order · store <code>outbox_event</code>, settlement <code>event_outbox</code>)에 INSERT → 커밋 직후 바로 발행하고, 실패분은 발행기가 30초마다 10초 지난 NEW를 다시 발행(최대 10회, 넘으면 ERROR 로그 → Grafana 알림 "이벤트 발행 한도 초과"). 유실이 없습니다.</p></div>
 <div class="card"><h4>소비: 멱등하게</h4>
 <p>SQS는 <b>최소 한 번</b> 전달이라 같은 메시지가 두 번 올 수 있습니다. 소비자는 <code>processed_event(event_id PK)</code>에 INSERT를 시도해 중복이면 건너뜁니다. 처리 중 예외가 나면 메시지를 삭제하지 않아 재시도되고, 3번 실패하면 DLQ로 갑니다.</p>
 <p>Spring에서 SQS를 받을 때 Spring Cloud AWS의 Boot 4 호환 버전을 먼저 확인하고, 맞지 않으면 AWS SDK v2 <code>SqsClient</code> 롱폴링으로 직접 구현합니다.</p></div>
@@ -2272,14 +2283,14 @@ DynamoDB는 "접근 패턴을 먼저 정하고 키를 설계"합니다(Single Ta
 <tr><td><b>결제 대기 만료</b>: <code>PENDING</code> 15분 경과 주문 → payment <code>/internal</code>로 포트원 결제 상태 조회 → 결제됐으면 확정, 아니면 보상(결제 취소 · 재고 해제 · 사용 포인트 환원 → <code>FAILED</code>)</td><td>order (→ payment · product · user)</td><td>20초 간격(11/5, 끝난 뒤부터 셈 — 분당 약 150건 계산값) · 기준 15분</td><td><span class="tag must">Must</span> 재고 · 포인트가 "결제 안 한 주문"에 묶이지 않게</td></tr>
 <tr><td>멈춘 Saga 복구: 일정 시간 진행 없는 <code>saga_instance</code> → 다음 단계 재시도 또는 보상</td><td>order</td><td>1분</td><td><span class="tag must">Must</span> 06장</td></tr>
 <tr><td>보완요청 7일 경과 → 자동 반려</td><td>store</td><td>매일</td><td><span class="tag should">Should</span></td></tr>
-<tr><td>Outbox 릴레이</td><td>order · settlement</td><td>2초</td><td><span class="tag could">Could</span> Outbox를 쓸 때만</td></tr>
+<tr><td>Outbox 발행기 (실패분 재발행)</td><td>order · store · settlement</td><td>30초 (10초 지난 NEW, 최대 10회)</td><td>구현 — 정상 경로는 커밋 직후 바로 발행</td></tr>
 <tr><td>1년 미접속 휴면, 클레임 3영업일 직권처리</td><td>—</td><td>—</td><td><span class="tag wont">Won't</span> 범위 밖</td></tr>
 </table></div>
 <p><b>회원등급은 스케줄러를 쓰지 않습니다.</b> user가 <code>OrderItemConfirmed</code>를 받을 때마다 누적 구매확정 금액을 더하고 기준을 넘으면 등급을 올립니다(이벤트 기반, Should). 정산 <b>지급</b>도 스케줄러가 아니라 관리자가 "지급 실행"을 누르는 수동 작업입니다(목업 화면과 같음).</p>
 <div class="box warn"><b class="t">스케줄러 함정 2가지</b>
 <ol>
 <li><b>레플리카가 2개면 <code>@Scheduled</code>가 2번 실행됩니다.</b> 정산이 두 번 집계되는 사고가 납니다. <b>ShedLock</b>(각 서비스 DB의 <code>shedlock</code> 테이블)을 쓰고, 집계 자체도 "주차 · 스토어 UNIQUE 키 + INSERT 실패 시 건너뜀"으로 멱등하게 만드세요. Boot 4 / Spring 7과 호환되는 ShedLock 버전을 확인하세요.</li>
-<li><b>데모 때 7일을 기다릴 수 없습니다.</b> cron과 기준 기간을 설정값으로 빼서(<code>app.order.auto-confirm-after: 7d</code> → dev 클러스터 ConfigMap <code>2m</code>) ConfigMap으로 바꿀 수 있게 하고, 관리자용 "지금 실행" API를 둡니다. 시간대는 <code>@Scheduled(cron = "...", zone = "Asia/Seoul")</code>로 명시합니다.</li>
+<li><b>데모 때 7일을 기다릴 수 없습니다.</b> cron과 기준 기간을 설정값으로 빼서(<code>app.order.auto-confirm-after: 7d</code> → dev 클러스터 ConfigMap <code>1h</code>, 11/3 2m → 1h) ConfigMap으로 바꿀 수 있게 하고, 관리자용 "지금 실행" API를 둡니다. 시간대는 <code>@Scheduled(cron = "...", zone = "Asia/Seoul")</code>로 명시합니다.</li>
 </ol></div>
 <div class="box prod"><b class="t">대안 비교</b>
 쿠버네티스 <b>CronJob</b>(작업마다 파드를 새로 띄움 · 중복 실행 걱정 없음 · JVM 기동 비용), <b>EventBridge Scheduler → Lambda/SQS</b>(서버리스 · 클러스터 밖). 이 프로젝트는 서비스 코드 안에서 끝나는 <code>@Scheduled</code> + ShedLock이 가장 단순합니다. 서비스 데이터와 무관한 배치(로그 아카이브)만 EventBridge를 씁니다(11장).</div>
@@ -2291,9 +2302,9 @@ DynamoDB는 "접근 패턴을 먼저 정하고 키를 설계"합니다(Single Ta
 <p class="lead">원칙: <b>서버리스 = 배치 · 로깅만. 사용자 API는 없고, MSA 경계 밖에서 이벤트(SQS · S3 → EventBridge)나 스케줄(EventBridge)로만 깨어납니다.</b> 사용자가 직접 호출하고 로그인이 필요한 기능은 모두 게이트웨이 뒤 Spring 서비스에 둡니다. Lambda가 실패해도 주문 · 결제에는 영향이 없어야 합니다.</p>
 <div class="tbl"><table>
 <tr><th>함수</th><th>트리거</th><th>하는 일</th><th>담당</th><th>우선순위</th></tr>
-<tr><td><code>order-notification</code></td><td>SQS (<code>notification-order-events</code> · <code>notification-store-events</code>)</td><td>SES 메일(주문 확인 · 배송 시작 · 취소/반품 완료 · 입점 승인) + DynamoDB <code>notifications</code>로 멱등 · 이력</td><td>구지훈</td><td><span class="tag should">Should</span></td></tr>
+<tr><td><code>order-notification</code></td><td>SQS (<code>notification-order-events</code> · <code>notification-store-events</code>)</td><td>SES 메일(주문 확인 · 배송 시작 · 배송 완료 · 취소/반품 완료 · 입점 승인 · 반려 · 보완요청) + DynamoDB <code>notifications</code>로 멱등 · 이력. 큐 연결은 10/29부터 켬</td><td>구지훈</td><td><span class="tag should">Should</span></td></tr>
 <tr><td><code>settlement-report</code></td><td>SQS (<code>report-settlement-events</code>, SettlementPaid)</td><td>정산 명세서 CSV → S3 <code>sesac-gojigi-reports-{계정4}</code> → SES 메일(판매자 정산 화면 링크, 다운로드는 화면에서 10분 presigned) + DynamoDB <code>settlement-reports</code></td><td>구지훈</td><td><span class="tag should">Should</span></td></tr>
-<tr><td><code>log-archive</code></td><td>EventBridge 매일 03:00 (KST)</td><td>CloudWatch Logs(Lambda 로그) → S3 <code>sesac-gojigi-log-archive-{계정4}</code> 내보내기, 수명주기 90일 후 Glacier</td><td>박지연</td><td><span class="tag could">Could</span></td></tr>
+<tr><td><code>log-archive</code></td><td>EventBridge 매일 03:00 (KST)</td><td>CloudWatch Logs(Lambda 로그) → S3 <code>sesac-gojigi-log-archive-{계정4}</code> 내보내기, 수명주기 90일 후 Glacier. <b>현재 함수 틀만</b>(트리거 · 권한 · 버킷은 있음, 내보내기 코드는 TODO)</td><td>박지연</td><td><span class="tag could">Could</span></td></tr>
 <tr><td><code>upload-guard</code> (10/27)</td><td>EventBridge — S3 images · seller-docs "Object Created"</td><td>앞 16바이트(매직 바이트)로 실제 형식 확인 — images: <code>products/</code> · <code>reviews/</code> · <code>stores/</code> 의 jpg · png · webp / seller-docs: <code>applications/</code> 의 pdf · jpg · png. 경로 · 확장자 · 내용이 맞지 않거나 빈 파일이면 삭제 + SNS <code>sesac-gojigi-alerts</code> 메일 (SYS-24 — presigned PUT 은 서버가 내용을 보지 않으므로)</td><td>구지훈</td><td><span class="tag could">Could</span></td></tr>
 </table></div>
 <p>상품 이미지 썸네일 Lambda는 만들지 않습니다. 이미지는 원본만 S3에 올리고, "원본 / 리사이즈 분리" 구조는 아키텍처 문서에만 그립니다(02장 · 20장). 고객센터(FAQ · 상품문의)도 서버리스가 아니라 프론트 정적 데이터와 review-service에 둡니다(03장).</p>
@@ -2315,7 +2326,7 @@ provider:
   region: ap-northeast-2
   stage: ${opt:stage, 'dev'}
   memorySize: 256
-  timeout: 10
+  timeout: 30
   logRetentionInDays: 14
   environment:
     TABLE: ${ssm:/sesac-gojigi/dev/dynamodb/notifications-table}
@@ -2327,7 +2338,7 @@ provider:
           Action: [ses:SendEmail]
           Resource: "*"
         - Effect: Allow
-          Action: [dynamodb:GetItem, dynamodb:PutItem]
+          Action: [dynamodb:PutItem, dynamodb:UpdateItem]   # 조건부 Put 으로 선점 → 발송 후 Update
           Resource: ${ssm:/sesac-gojigi/dev/dynamodb/notifications-arn}
 
 functions:
@@ -2336,11 +2347,11 @@ functions:
     events:
       - sqs:
           arn: ${ssm:/sesac-gojigi/dev/sqs/notification-order-queue-arn}
-          batchSize: 10
+          batchSize: 5
           functionResponseType: ReportBatchItemFailures   # 실패한 메시지만 재시도
       - sqs:
           arn: ${ssm:/sesac-gojigi/dev/sqs/notification-store-queue-arn}
-          batchSize: 10
+          batchSize: 5
           functionResponseType: ReportBatchItemFailures</code></pre>
 <p class="cap">serverless/order-notification/src/notify.js</p>
 <pre><code>import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
@@ -2392,7 +2403,7 @@ provider:
   name: aws
   runtime: nodejs22.x
   region: ap-northeast-2
-  timeout: 300                 # 내보내기 작업은 계정당 동시에 1개 → 순서대로 기다림
+  timeout: 30                  # 실제 값(현재 틀만). 내보내기를 구현하면 계정당 동시 1개라 순서대로 기다려야 해 늘려야 함
   environment:
     BUCKET: ${ssm:/sesac-gojigi/dev/s3/log-archive-bucket}
     LOG_GROUP_PREFIX: /aws/lambda/sesac-gojigi-
@@ -3862,7 +3873,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td><b>GitHub Actions</b></td><td><code>paths</code> 필터, <code>needs</code> · outputs, 매트릭스, <code>concurrency</code>, 캐시, <b>OIDC</b>(<code>id-token: write</code>), 재사용 워크플로</td><td>서비스 10개(chat 포함) 빌드 · ECR 푸시 · 태그 커밋</td></tr>
 <tr><td>컨테이너 · Helm</td><td>레이어 캐시, 이미지 태그(SHA), values 구조, <code>helm template</code></td><td>서비스별 차트 값</td></tr>
 <tr><td><b>ArgoCD</b> · 무중단 배포</td><td>Application, auto-sync · prune · selfHeal, 롤백(= Git revert) / 롤링 업데이트(<code>maxUnavailable: 0</code>) · readiness · preStop · graceful shutdown</td><td>시연 ④ 무중단 배포, ⑤ 롤백(Could)</td></tr>
-<tr><td>포인트 · 등급</td><td>sagaId 멱등 차감 · 환원, 이벤트 소비 멱등(<code>processed_event</code>)</td><td><code>/internal/points/use</code>, <code>OrderPaid</code> 5% 적립, 등급 (Should)</td></tr>
+<tr><td>포인트 · 등급</td><td>sagaId 멱등 차감 · 환원, 이벤트 소비 멱등(<code>processed_event</code>)</td><td><code>/internal/points/use</code>, <code>OrderItemConfirmed</code> 5% 적립(10/29 — 처음엔 <code>OrderPaid</code>), 등급 (Should)</td></tr>
 <tr><td>프론트</td><td>Zustand authStore, axios 401 → refresh 재시도 큐, 역할별 라우트 가드</td><td>로그인 · 가입 · 마이페이지</td></tr>
 <tr><td><b>Saga · 보상</b></td><td>오케스트레이션, 단계 기록(<code>saga_instance</code>), 역순 보상, 타임아웃 시 "결과 모름" 처리, 멈춘 Saga 복구 스케줄러</td><td>주문 생성 · 결제 후 취소/반품 Saga (06장)</td></tr>
 <tr><td><b>상태머신</b></td><td>상품주문 · 클레임 상태 전이표를 enum + 전이 메서드로(허용 안 되는 전이는 예외), 이력 기록</td><td>결제완료 → … → 구매확정, 취소 · 반품 · 교환</td></tr>
@@ -3962,7 +3973,7 @@ Windows에서 커밋한 <code>gradlew</code>나 <code>.sh</code> 파일이 CRLF 
 <tr><td>검색은 <b>JPA + QueryDSL</b>만</td><td>Elasticsearch는 범위가 크게 늘어남</td></tr>
 <tr><td>제외</td><td><b>오토스케일링(HPA) · 이력 파티셔닝 · 고급 인덱스 · CQRS 읽기 테이블 · 캐시 · Elasticsearch · NL2SQL · 썸네일 · Cognito</b> → 20장 "실무에서는"으로 설명만</td><td>예매 · 경매 같은 동시성 폭주 도메인이 아님, 실무 기준은 이번 기간에 과함</td></tr>
 <tr><td rowspan="2">범위</td><td>리뷰 · 취소/반품/교환 = <b>Must</b>, 포인트 · 회원등급 = <b>Should</b>. 찜 · 쿠폰 제거, 비회원 구매 TODO</td><td>멘토: 범위 축소. 이커머스 핵심 흐름 우선</td></tr>
-<tr><td>포인트: 실결제금액의 <b>5% 적립</b> + 다음 결제에서 사용, 상품주문 단위로 비율 배분 기록</td><td>부분 취소 · 반품 시 환원 · 회수를 정확히</td></tr>
+<tr><td>포인트: 실결제금액의 <b>5% 적립</b> + 다음 결제에서 사용, 상품주문 단위로 비율 배분 기록 (10/29 적립 시점을 결제 완료 → 구매확정으로 변경)</td><td>부분 취소 · 반품 시 환원 · 회수를 정확히</td></tr>
 <tr><td>인프라</td><td>EKS 워커 <b>t3.large × 2 유지</b>(max 3, 시연 때 3대) → <b>10/14 t3.xlarge × 2로 조정</b>(아래 "10/14 사이징 조정")</td><td>멘토 "large도 크다"는 5개 기준. 9개 + Keycloak은 "서비스 수 × 기본 자원" 산수로 설명</td></tr>
 <tr><td>담당</td><td>구지훈(AWS IaC · settlement · admin · payment · 알림 메일 · 정산 명세서) · 이경석(CI/CD · Keycloak · user · gateway 인증 · order · review) · 박지연(관측성 · 헬스 체크 · product · store · 로그 아카이브) — 10/15 3인 체제로 재배치(아래 "10/15 팀 3인 체제 전환")</td><td>멘토: IaC는 한 사람이 끝까지 만들어 공유, 업무와 발표는 공평하게 · 각자 오너십</td></tr>
 <tr><td rowspan="2">일정 · 운영</td><td>10/12 ~ 11/20, <b>11/5 기능 동결</b>(11/02 변경, 원래 11/13), 11/6 QA · 2차 부하 측정, 11/9 문서, 11/10 ~ 발표 자료, 11/20 발표</td><td>남은 기간을 발표 자료에 쓰려고 앞당김</td></tr>

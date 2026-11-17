@@ -1,4 +1,4 @@
-// 스펙 문서의 우선순위 필터 · 도메인별 요구사항 수 집계.
+// 스펙 문서의 우선순위 필터, 도메인별 요구사항 수 집계.
 // 원본 HTML의 <script>는 innerHTML로 넣으면 실행되지 않으므로 같은 동작을 여기서 붙인다.
 export function enhanceSpec(root) {
   const rows = [...root.querySelectorAll('.req tr[data-p]')];

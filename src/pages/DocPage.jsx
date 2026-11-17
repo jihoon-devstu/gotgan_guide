@@ -84,7 +84,7 @@ export default function DocPage({ doc }) {
           dangerouslySetInnerHTML={{ __html: html }}
         />
 
-        <nav className="doc-pager" aria-label="이전 · 다음 문서">
+        <nav className="doc-pager" aria-label="이전, 다음 문서">
           {prev ? (
             <Link to={`/${prev.slug}`} className="pager-prev">
               <small>이전 문서</small>
@@ -93,7 +93,7 @@ export default function DocPage({ doc }) {
           ) : (
             <Link to="/" className="pager-prev">
               <small>처음으로</small>
-              <b>홈 · 파트별 보기</b>
+              <b>홈, 파트별 보기</b>
             </Link>
           )}
           {next && (

@@ -1,4 +1,4 @@
-/* 스펙 · 컨벤션 본문 (원본 project-spec.html의 본문 스타일을 .doc-s 범위로 옮김) */
+/* 스펙, 컨벤션 본문 (원본 project-spec.html의 본문 스타일을 .doc-s 범위로 옮김) */
 .doc-s code, .doc-s .mono { font-family: var(--mono); font-size: .88em; }
 .doc-s p code, .doc-s li code, .doc-s td code { background: var(--code); padding: 0 4px; overflow-wrap: anywhere; }
 .doc-s header.doc { border-bottom: 2px solid var(--fg); padding-bottom: 18px; }

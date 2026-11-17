@@ -61,9 +61,10 @@
 | 코드 품질 | SonarQube Cloud — main 대상 PR에 품질 게이트 | 1-3 |
 | (10/13) 저장소 3개 | `gotgan-backend`(services · serverless · docker-compose · docs/api) · `gotgan-frontend`(React 루트) · `gotgan-config`(deploy · infra/terraform · scripts · docs). 모노레포 폐지. 각 저장소 `docs/CONVENTION.md`는 이 문서의 발췌본(자동 생성) — 이 문서만 고친다 | 1-4 · 5-5 |
 | (10/13) 시크릿 | **GitHub Secrets 단일 소스**(클러스터 · CI) · Vercel 환경 변수(프론트). Secrets Manager · KMS · ESO 없음. `secrets-sync` 워크플로가 K8s Secret 생성 | 1-5 · 5-3 |
-| (10/13) 인프라 일일 스케줄 | `infra/terraform/cluster/`는 `infra-schedule` 워크플로가 매일 KST 08:00 apply(→ `bootstrap`) · 22:00 destroy (10/26 부터 EventBridge Scheduler → Lambda 가 실행). 나머지 폴더는 상시. apply/destroy는 워크플로 또는 구지훈 | 5-2 |
+| (10/13) 인프라 일일 스케줄 | `infra/terraform/cluster/`는 `infra-schedule` 워크플로가 매일 KST 08:00 apply(→ `bootstrap`) · 22:00 destroy (10/26 부터 EventBridge Scheduler → Lambda 가 실행). 나머지 폴더는 상시. apply/destroy는 워크플로 또는 구지훈. **11/17부터 두 스케줄 DISABLED**(`app/scheduler.tf` `schedule_enabled = false`) — 24시간 운영, 11/20 발표 후 정리는 `infra-schedule` 수동 destroy | 5-2 |
 | (10/13) Redis 폴백 | 장바구니 원본은 MySQL `orderdb.cart_item`, Redis `cart:{userId}`는 캐시. Redis 호출은 서킷 인스턴스 `redisCart` + 폴백(MySQL) | 2-2 · 2-7 · 3-2 |
 | (10/13 3차) 3티어(db 노드 분리 · NetworkPolicy) | 프론트(Vercel) → 백(EKS `app` 노드 그룹 t3.xlarge ×2 — 10/14 t3.large에서 조정) → DB(EKS `db` 노드 그룹 t3.medium ×1, 테인트 `tier=db:NoSchedule`, MySQL · Redis만). `02-networkpolicy.yaml`로 DB 3306 · 6379는 `tier=backend` 파드만. blackbox exporter 없음. 파일 업로드만 presigned URL로 브라우저 → S3 직접(예외) | 5-3 |
+| (11/17) 자동 확장 | HPA는 Helm values 서비스 항목에 `hpa: { maxReplicas: N }`이 있을 때만(gateway, user, store, product, order), 최소는 `replicas`, 목표 CPU는 `defaults.hpa.cpu`(requests 대비 70%). HPA가 바꾼 replicas는 ArgoCD `ignoreDifferences`로 덮지 않음. Cluster Autoscaler는 app 노드 그룹만 2~3대(db 노드 그룹 제외) | 5-3 |
 
 ---
 
@@ -381,6 +382,7 @@ RuntimeException
 - `GlobalExceptionHandler`가 `BusinessException`을 `ApiResponse.error()`로 변환 → **서비스는 throw만, 컨트롤러는 try-catch 없음**
 - Spring 표준 예외(`MethodArgumentNotValidException` · `HandlerMethodValidationException` · `MethodArgumentTypeMismatchException` · `MissingServletRequestParameterException` · `HttpMessageNotReadableException`)도 400 `INVALID_INPUT`으로 변환
 - 게이트웨이의 401 · 403도 같은 봉투 형식(`UNAUTHORIZED` · `FORBIDDEN`)으로 응답
+- 게이트웨이가 업무 서비스에 닿지 못하면(파드 없음, 연결 거부, 연결 타임아웃, 응답 전 연결 끊김) 502, 응답 타임아웃이면 504로, 둘 다 `EXTERNAL_API_ERROR` 봉투로 응답(응답 전 끊김 `PrematureCloseException`을 500이 아니라 502로 분류한 것은 11/17)
 
 **에러 코드 네이밍**
 
@@ -399,7 +401,7 @@ RuntimeException
 | `REVIEW` · `INQUIRY` | review | `REVIEW_NOT_ELIGIBLE` 작성 자격 없음 · `INQUIRY_NOT_FOUND` |
 | `SETTLE` · `COMMISSION` | settlement | `SETTLE_AGGREGATE_CONFLICT` 다른 집계 진행 중 · `COMMISSION_PAST_EFFECTIVE_DATE` 지난 적용 시작일 |
 | `CHAT` | chat | `CHAT_ROOM_NOT_FOUND` 없거나 남의 방 · `CHAT_STORE_INACTIVE` 정지 · 폐점 스토어 · `CHAT_TOO_FAST` 연결마다 1초 5건 초과(STOMP 오류 큐 `/user/queue/errors`) (10/27) |
-| (조합은 그대로 전달) · `CATEGORY` · `REPORT` · `NOTIFICATION` · `SYSTEM` | admin | 하위 서비스가 보낸 `ApiResponse`의 `code` · `message`를 **바꾸지 않고 전달**, 연결 실패 · 타임아웃만 `EXTERNAL_API_ERROR`. admin 이 판단하는 것만 자체 코드 — `CATEGORY_COMMISSION_REQUIRED` 수수료 없이 활성화 · `REPORT_DUPLICATED` 중복 신고 · `NOTIFICATION_NOT_FOUND` · `SYSTEM_KILL_COOLDOWN` 장애 시연 재시도 제한 |
+| (조합은 그대로 전달) · `CATEGORY` · `REPORT` · `NOTIFICATION` · `SYSTEM` | admin | 하위 서비스가 보낸 `ApiResponse`의 `code` · `message`를 **바꾸지 않고 전달**, 연결 실패 · 타임아웃만 `EXTERNAL_API_ERROR`. admin 이 판단하는 것만 자체 코드 — `CATEGORY_COMMISSION_REQUIRED` 수수료 없이 활성화 · `REPORT_DUPLICATED` 중복 신고 · `NOTIFICATION_NOT_FOUND` · `SYSTEM_KILL_COOLDOWN` 장애 시연 재시도 제한, `SYSTEM_LOADTEST_RUNNING` 부하테스트 이미 실행 중(11/16), `SYSTEM_REPORT_INVALID_RANGE` 장애 리포트 기간 잘못(11/17). 전체 목록은 backend `docs/api/error-codes.md` |
 | 공통 (도메인 접두어 없음) | 전체 | `SUCCESS` · `INVALID_INPUT` · `UNAUTHORIZED` · `FORBIDDEN` · `NOT_FOUND` · `METHOD_NOT_ALLOWED` · `EXTERNAL_API_ERROR` · `GLOBAL_ERROR` |
 
 - admin-service는 조합 · 전달만 하는 API 에서는 자체 에러 코드를 만들지 않습니다. 관리자 화면이 받는 코드는 데이터 주인 서비스의 코드 그대로 (`APPLY_REAPPLY_RESTRICTED` 등). 예외 — admin 이 판단 · 데이터 주인인 곳: 카테고리 · 수수료 조합 `CATEGORY_*`(10/20), 신고 · 조치 `REPORT_*`(10/26 admindb), 알림 센터 `NOTIFICATION_*`(10/27), 장애 시연 `SYSTEM_*`(11/7)
@@ -480,7 +482,7 @@ throw new OrderException(OrderErrorCode.ORDER_NOT_FOUND);
 | 추적 | `RestClient` 를 직접 만들면 `ObservationRegistry` 를 함께 넘긴다 — 빠지면 서비스 간 traceId 가 끊김(QA Q-박-5) |
 | 비동기 풀 | `AsyncTaskExecutor` 빈이 하나뿐이면 Boot 가 WebSocket 채널에 씌운다 — 알림용 풀은 `@Bean(defaultCandidate = false)` + `@Qualifier`(k6 S5) |
 | 서킷 브레이커 | **client(대상 서비스)마다 인스턴스 하나**, 이름 = 대상 서비스 (`resilience4j.circuitbreaker.instances.product`) |
-| 재시도 | **멱등 GET만** (최대 2회). POST · PATCH는 재시도하지 않음 — Saga는 멱등 키 + 보상으로 처리 |
+| 재시도 | **멱등 GET만** (최대 2회). POST · PATCH는 재시도하지 않음 — Saga는 멱등 키 + 보상으로 처리. 게이트웨이도 같은 원칙(11/17, `UpstreamRetryConfig`): GET만, 응답 전 연결 실패나 끊김(IOException)일 때 최대 2회, 5xx 응답과 응답 타임아웃은 재시도하지 않음. 요청 제한 뒤에 두어 재시도가 토큰을 또 쓰지 않게 함 |
 | 폴백 | 도메인 예외 `EXTERNAL_API_ERROR`(502/504), 대시보드는 부분 응답 |
 | 설정 위치 | `application.yml`의 `resilience4j.*` (별도 Config 클래스 없음, 서킷 브레이커 인스턴스 이름 = 대상 서비스 `product` · `store` …) — 값 임의 변경 금지 |
 
@@ -802,7 +804,7 @@ gotgan-frontend/src/
 
 **운영 규칙**
 
-1. **관리자 화면은 `features/admin`에 둔다** (입점 심사 · 스토어 · 카테고리 · 수수료 · 정산 · 회원 · 신고 · 관리자 대시보드 · 시스템 상태(장애 시연 `/admin/system`, 11/9 화면 박지연)). `/api/admin/**`(admin-service)만 호출, 도메인 서비스 API를 직접 부르지 않음 — 담당 구지훈. 예외: 관리자 상담함은 `features/chat` 공용 화면이 `/api/chats/**`(chat-service) 호출(10/27)
+1. **관리자 화면은 `features/admin`에 둔다** (입점 심사 · 스토어 · 카테고리 · 수수료 · 정산 · 회원 · 신고 · 관리자 대시보드 · 시스템 상태(장애 시연 `/admin/system`, 11/9 화면 박지연), 11/16 부하테스트와 실시간 모니터링 패널, 11/17 장애 분석 리포트 `/admin/system/report`(구지훈)). `/api/admin/**`(admin-service)만 호출, 도메인 서비스 API를 직접 부르지 않음 — 담당 구지훈. 예외: 관리자 상담함은 `features/chat` 공용 화면이 `/api/chats/**`(chat-service) 호출(10/27)
 2. 다른 사람의 `features/` 폴더는 PR 없이 수정 금지
 3. 두 도메인 이상에서 쓰이면 `shared/`로 승격, 승격 시 팀 공지
 4. `features` 간 직접 import 지양 — 필요하면 `shared` 경유
@@ -1012,7 +1014,7 @@ function StoreList() {
 - 자원 로컬 이름: snake_case, 타입 반복 금지 (`aws_s3_bucket.product_images` ○ / `aws_s3_bucket.product_images_bucket` ✗)
 - 변수 · output: snake_case + `description` 필수
 - 커밋 전 `terraform fmt -recursive` · `terraform validate`
-- apply/destroy는 스케줄 워크플로(`infra-schedule`, OIDC 역할 — `cluster/` 매일 08:00 생성 · 22:00 삭제 — EventBridge Scheduler → Lambda 가 실행, 데이터는 매일 초기화) 또는 구지훈. 다른 사람은 plan까지(`infra.yml`이 PR에 plan 코멘트). 예외: `cicd/`(GitHub OIDC · Actions 역할)는 이경석이 작성 · 로컬 apply — 워크플로가 쓸 역할을 만드는 폴더라 워크플로로 apply할 수 없음
+- apply/destroy는 스케줄 워크플로(`infra-schedule`, OIDC 역할 — `cluster/` 매일 08:00 생성 · 22:00 삭제 — EventBridge Scheduler → Lambda 가 실행, 데이터는 매일 초기화. 11/17부터 스케줄 DISABLED, 24시간 운영이라 수동 실행만) 또는 구지훈. 다른 사람은 plan까지(`infra.yml`이 PR에 plan 코멘트). 예외: `cicd/`(GitHub OIDC · Actions 역할)는 이경석이 작성 · 로컬 apply — 워크플로가 쓸 역할을 만드는 폴더라 워크플로로 apply할 수 없음
 - Terraform에 비밀 값 금지 — 시크릿은 GitHub Secrets → `secrets-sync`(1-5). `kms.tf` · `secrets.tf` · `eso.tf` 없음
 - `.terraform.lock.hcl` 커밋, `*.tfstate` · `.terraform/` 커밋 금지
 - 버전: Terraform **1.16.5** 고정(`required_version = "~> 1.16.0"`, 워크플로 `terraform_version: '1.16.5'`) · aws provider `~> 5.0` · 모듈 vpc `~> 5` / eks `~> 20`. 상태 잠금은 `backend "s3" { use_lockfile = true }`(1.10+, DynamoDB 잠금 테이블 없음)
@@ -1027,15 +1029,16 @@ function StoreList() {
 - YAML 들여쓰기 2칸, 탭 금지
 - 네임스페이스: 앱 `sesac-gojigi` · 모니터링 `monitoring` · `argocd`
 - Helm `values.yaml` 키는 camelCase, 서비스 키는 서비스 이름 (`services.order-service.tag`)
-- Secret 이름: `mysql-secret` · `{service}-secret` · `keycloak-secret` · `grafana-secret` · `alert-webhook-secret` — 파일로 커밋하지 않고 `secrets-sync` 워크플로가 생성. 서비스는 `envFrom.secretRef`로만 읽음
+- Secret 이름: `mysql-secret` · `{service}-secret` · `keycloak-secret` · `grafana-secret` · `alert-webhook-secret`, `loadtest-secret`(관리자 화면 부하테스트, 11/16) — 파일로 커밋하지 않고 `secrets-sync` 워크플로가 생성. 서비스는 `envFrom.secretRef`로만 읽음
 - Redis는 AOF(`appendonly yes`) + PVC(`ebs-sc` 1Gi) — EBS 볼륨(gp3 디스크), ElastiCache 아님
 - 노드 그룹(3티어, 10/13 3차 · 10/14 사이징 조정): `app`(t3.xlarge ×2, 라벨 `tier=app`) · `db`(t3.medium ×1, 2a 고정, 라벨 + 테인트 `tier=db:NoSchedule`). 노드 라벨 값은 `app` · `db` 둘뿐
 - 파드 배치: 업무 서비스 · gateway · Keycloak · 관측성 · ArgoCD는 `nodeSelector: { tier: app }`(Helm `deployment.yaml` 기본). MySQL · Redis만 `nodeSelector: { tier: db }` + `tolerations: [{ key: tier, value: db, effect: NoSchedule }]`
 - 파드 라벨 `tier`: DB에 접속하는 파드(업무 서비스 · Keycloak · 디버그용 mysql 클라이언트)는 `tier: backend`, MySQL · Redis는 `tier: db`. `app:` 라벨과 별개로 둘 다 붙인다
 - NetworkPolicy(`deploy/k8s/02-networkpolicy.yaml`, bootstrap이 configmap 직후 적용): `tier=db` 파드의 3306 · 6379 ingress는 네임스페이스 `sesac-gojigi`의 `tier=backend` 파드만, `tier=db` 파드 egress는 kube-dns 53뿐. 정책 이름은 `db-ingress-from-backend` · `db-egress-deny-except-dns`. 다른 네임스페이스(monitoring 등)에서 DB에 직접 붙지 않는다. 업무 티어(11/5): `tier=backend` 는 같은 티어 · `monitoring` 에서만(`backend-ingress-from-backend-monitoring`), gateway 8080 은 어디서나(`gateway-ingress-from-nlb`)
-- 이미지 태그: 커밋 SHA 7자리. `latest` 금지. 외부 이미지는 패치 번호까지 고정(`keycloak:26.8.2`) — `26.8` 같은 움직이는 태그는 매일 생성 때 새 패치가 받아짐(11/6 Admin API 401)
+- 이미지 태그: 커밋 SHA 7자리. `latest` 금지. 외부 이미지는 패치 번호까지 고정(`keycloak:26.8.2`) — `26.8` 같은 움직이는 태그는 매일 생성 때 새 패치가 받아짐(11/6 Admin API 401). 관리자 화면 부하테스트 Job 이미지도 `grafana/k6:1.8.3` 고정(실행 중 사용자 수 변경 기능이 k6 v2에서 빠져 1.x, admin `application.yml`, 11/16)
 - 모든 컨테이너에 `resources.requests` 필수, 메모리 `limits` 필수
 - JVM 힙 상한은 Helm env `JAVA_TOOL_OPTIONS`(33%, admin 41%) — 이미지 값(75%)을 통째로 덮으므로 `ExitOnOutOfMemoryError` 도 함께 적는다. 힙 = max(256Mi, 라이브 × 2), 힙 + 힙 밖 + 약 180Mi ≤ limit
+- HPA(11/17, `templates/hpa.yaml`): 서비스 항목에 `hpa: { maxReplicas: N }`이 있으면 `replicas`가 최소, N이 최대, 목표 CPU는 `defaults.hpa.cpu`(requests 대비 %, 지금 70). 그래서 HPA 대상은 CPU `requests`가 있어야 한다. HPA가 쓴 replicas는 ArgoCD가 무시(`deploy/argocd/application.yaml`의 `ignoreDifferences` `managedFieldsManagers: kube-controller-manager` + `RespectIgnoreDifferences=true`)
 
 ### 5-4. 환경 변수 · 설정
 

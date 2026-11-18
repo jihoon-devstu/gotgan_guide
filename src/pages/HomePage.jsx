@@ -90,7 +90,7 @@ export default function HomePage() {
             </li>
           ))}
         </ul>
-        <p className="home-lead">화면 왼쪽 아래 <b>MOCK 화면 목록</b> 버튼으로 화면 55개를 상태별 바로가기 73개로 나눠 어디로든 이동할 수 있습니다. 데이터는 하드코딩이며 새로고침하면 초기화됩니다.</p>
+        <p className="home-lead">화면 왼쪽 아래 <b>MOCK 화면 목록</b> 버튼으로 화면 55개를 상태별 바로가기 75개로 나눠 어디로든 이동할 수 있습니다. 데이터는 하드코딩이며 새로고침하면 초기화됩니다.</p>
       </section>
 
       <section className="home-block">
@@ -167,7 +167,7 @@ export default function HomePage() {
       </section>
 
       <footer className="home-foot">
-        <span>목업 화면 55개(상태별 바로가기 73개)는 <a href={MOCKUP_URL} target="_blank" rel="noreferrer">mockup-page-sable.vercel.app ↗</a></span>
+        <span>목업 화면 55개(상태별 바로가기 75개)는 <a href={MOCKUP_URL} target="_blank" rel="noreferrer">mockup-page-sable.vercel.app ↗</a></span>
         <span>문서 원본은 저장소 <code>content/</code> — 수정 후 main에 push하면 자동 배포</span>
         <span>컨벤션 MD를 고쳤다면 <code>npm run convention</code>으로 HTML 재생성</span>
       </footer>

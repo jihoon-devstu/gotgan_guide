@@ -229,8 +229,8 @@ svg .ah2{fill:var(--point)}
 <path class="dl" d="M170,36 V20 H943 V32" marker-end="url(#a2)"/><text x="560" y="16" class="s">결제창 (브라우저 ↔ 포트원)</text>
 <!-- lane 2 -->
 <rect class="lane" x="0" y="100" width="1036" height="280"/>
-<text x="10" y="120" class="lbl">EKS</text><text x="10" y="136" class="s">sesac-gojigi</text><text x="10" y="150" class="s">t3.xlarge ×2, db t3.medium</text>
-<rect class="hl" x="262" y="112" width="514" height="40"/><text x="519" y="130" text-anchor="middle" class="b">gateway-service ×2 :8080</text><text x="519" y="145" text-anchor="middle" class="s">JWT 검증(Keycloak JWKS), 경로 라우팅, X-User-* 헤더 주입</text>
+<text x="10" y="120" class="lbl">EKS</text><text x="10" y="136" class="s">sesac-gojigi</text><text x="10" y="150" class="s">t3.xlarge ×2~3, db t3.medium</text>
+<rect class="hl" x="262" y="112" width="514" height="40"/><text x="519" y="130" text-anchor="middle" class="b">gateway-service ×2~4 :8080</text><text x="519" y="145" text-anchor="middle" class="s">JWT 검증(Keycloak JWKS), 경로 라우팅, X-User-* 헤더 주입</text>
 <path class="ln" d="M711,80 V108" marker-end="url(#a1)"/>
 <path class="ln" d="M195,166 H931"/><path class="ln" d="M519,152 V166"/>
 <path class="ln" d="M195,166 V176"/><path class="ln" d="M379,166 V176"/><path class="ln" d="M563,166 V176"/><path class="ln" d="M747,166 V176"/><path class="ln" d="M931,166 V176"/>
@@ -286,9 +286,9 @@ svg .ah2{fill:var(--point)}
 <div class="tbl"><table>
 <tr><th>계층</th><th>구성 요소</th><th>역할</th></tr>
 <tr><td>엣지</td><td>Vercel, Route 53, ACM, EIP, NLB</td><td><ul><li>Vercel: 프론트 정적 파일 + <code>/api/*</code>를 API로 rewrite → 브라우저 입장 같은 출처</li><li>Route 53: <code>api.gotgan.click</code> A 레코드 → NLB 고정 IP(EIP 2개)</li><li>NLB: LBC가 생성, 교차 영역 분산, 443 리스너에서 ACM 인증서로 TLS 종료 → gateway 8080</li></ul></td></tr>
-<tr><td>게이트웨이</td><td>gateway-service ×2</td><td><ul><li>단일 진입점, 경로 → 서비스 라우팅 (03장, 8-3 라우팅 표)</li><li>Keycloak 발급 JWT를 JWKS로 검증 (Spring Security <code>oauth2ResourceServer</code>)</li><li>클레임 → <code>X-User-Id</code>, <code>X-User-Roles</code>, <code>X-Store-Id</code> 헤더 주입</li></ul></td></tr>
+<tr><td>게이트웨이</td><td>gateway-service ×2~4(HPA, 11/17)</td><td><ul><li>단일 진입점, 경로 → 서비스 라우팅 (03장, 8-3 라우팅 표)</li><li>Keycloak 발급 JWT를 JWKS로 검증 (Spring Security <code>oauth2ResourceServer</code>)</li><li>클레임 → <code>X-User-Id</code>, <code>X-User-Roles</code>, <code>X-Store-Id</code> 헤더 주입</li></ul></td></tr>
 <tr><td>인증</td><td>Keycloak (realm <code>gotgan</code>)</td><td><ul><li>계정(이메일, 비밀번호), 역할 BUYER, SELLER, ADMIN, 토큰 발급</li><li>ClusterIP — 로그인, 가입은 우리 React 화면 → user-service가 대리 호출, 소셜 로그인(구글, 카카오, 네이버)만 gateway <code>/realms/gotgan/**</code> 경유로 Keycloak 화면</li></ul></td></tr>
-<tr><td>업무 서비스 (백 티어)</td><td>user, store, product, order, payment, review, settlement, admin, chat — EKS <code>app</code> 노드(t3.xlarge ×2)</td><td><ul><li>기능(데이터 소유권) 기준 분할, 데이터까지 완전히 독립</li><li>ClusterIP — 외부 직접 접근 불가, 서비스 간 동기 호출은 <code>/internal/**</code>만</li><li>admin은 관리자 화면용 조합 계층(BFF) — 자기 DB는 admindb(신고, 조치 이력만, ADR-0001 예외 10/26), 알림 센터(SSE) 포함</li></ul></td></tr>
+<tr><td>업무 서비스 (백 티어)</td><td>user, store, product, order, payment, review, settlement, admin, chat — EKS <code>app</code> 노드(t3.xlarge ×2~3, Cluster Autoscaler 11/17)</td><td><ul><li>기능(데이터 소유권) 기준 분할, 데이터까지 완전히 독립</li><li>ClusterIP — 외부 직접 접근 불가, 서비스 간 동기 호출은 <code>/internal/**</code>만</li><li>admin은 관리자 화면용 조합 계층(BFF) — 자기 DB는 admindb(신고, 조치 이력만, ADR-0001 예외 10/26), 알림 센터(SSE) 포함</li></ul></td></tr>
 <tr><td>데이터 (DB 티어)</td><td>MySQL 1대(스키마 10), Redis — EKS <code>db</code> 노드(t3.medium, 2a) + EBS 볼륨(gp3 디스크), DynamoDB, S3</td><td><ul><li>서비스별 스키마, 계정, 교차 JOIN, FK 금지</li><li>NetworkPolicy: 3306, 6379는 백 티어(<code>tier=backend</code>) 파드만, DB 파드는 밖으로 안 나감</li><li>Redis: <code>cart:{userId}</code>, 차단 <code>blocked:user:{userId}</code>(정지, 탈퇴), gateway 요청 제한 토큰 버킷, (<code>blacklist:{jti}</code> Could) — 캐시, 리프레시 토큰 키 없음, 실시간 Pub/Sub <code>notify:{받는 쪽}</code>(알림 센터), <code>chat:room:{id}</code>, 접속 중 ZSET <code>chat:presence:{id}</code>(채팅, 10/27)</li><li>DynamoDB: Lambda 데이터(알림 이력, 명세서 발송 이력), 알림 센터 알림함(<code>sesac-gojigi-inbox</code>, admin, 10/27)</li></ul></td></tr>
 <tr><td>비동기</td><td>SNS 토픽 3, SQS 큐, DLQ</td><td><ul><li>"일어난 일" 통보 (입점 승인, 결제 완료, 구매확정, 취소, 반품, 정산 지급)</li><li>3회 실패 시 DLQ</li></ul></td></tr>
 <tr><td>서버리스</td><td>Lambda 4, SES, EventBridge</td><td><ul><li>배치, 로깅만, 사용자 API 없음</li><li>알림 메일, 정산 명세서, 로그 아카이브, 업로드 파일 검사(upload-guard, 10/27)</li></ul></td></tr>
@@ -392,7 +392,7 @@ svg .ah2{fill:var(--point)}
 <h4>서비스 구성 — Spring 10개 + Keycloak</h4>
 <div class="tbl"><table>
 <tr><th>서비스</th><th>포트</th><th>책임</th><th>저장소</th><th>발행 이벤트</th><th>구독 이벤트</th><th>담당</th></tr>
-<tr><td><b>gateway-service</b></td><td>8080</td><td>라우팅, JWT 검증(Keycloak JWKS), 사용자 헤더 주입, CORS, 요청 제한, 차단 회원 거부</td><td>Redis(요청 제한 토큰 버킷, <code>blocked:user:</code> 조회)</td><td>—</td><td>—</td><td>이경석</td></tr>
+<tr><td><b>gateway-service</b></td><td>8080</td><td>라우팅, JWT 검증(Keycloak JWKS), 사용자 헤더 주입, CORS, 요청 제한, 차단 회원 거부, 현재 접속자 기록(11/17)</td><td>Redis(요청 제한 토큰 버킷, <code>blocked:user:</code> 조회, 현재 접속자 <code>gotgan:active:*</code>)</td><td>—</td><td>—</td><td>이경석</td></tr>
 <tr><td><b>keycloak</b></td><td>8080 (내부 <code>http://keycloak:8080</code>)</td><td>계정(이메일, 비밀번호), 역할, 토큰 발급</td><td>keycloakdb</td><td>—</td><td>—</td><td>이경석</td></tr>
 <tr><td><b>user-service</b></td><td>8081</td><td>회원 프로필, 배송지, 포인트(적립, 사용), 회원등급, 가입/로그인/refresh/로그아웃 API(Keycloak 대리 호출), 소셜 로그인(구글, 카카오, 네이버 — Keycloak IdP)</td><td>userdb, Redis(<code>blocked:user:</code> 쓰기)</td><td>—</td><td>StoreApproved, OrderItemConfirmed</td><td>이경석</td></tr>
 <tr><td><b>store-service</b></td><td>8082</td><td>입점 신청, 심사, 서류, 스토어(상태, 배송정책), 판매자 대시보드(조합)</td><td>storedb, S3 seller-docs, images(<code>stores/</code>)</td><td>StoreApproved, StoreStatusChanged, StoreApplicationRejected, StoreApplicationSupplementRequested</td><td>—</td><td>박지연</td></tr>
@@ -417,6 +417,7 @@ svg .ah2{fill:var(--point)}
   <li>판매자: <code>/api/seller/{자원}</code> — SELLER만</li>
   <li>관리자: <code>/api/admin/{자원}</code> — ADMIN만, <b>전부 admin-service</b>가 받아 각 서비스 <code>/internal/**</code> 호출</li>
   <li>실시간(10/27): <code>/api/notifications/**</code> → admin, <code>/api/chats/**</code>, <code>/ws/chat</code> → chat — REST 는 다른 API 와 같이 Vercel rewrite, 실시간 연결(SSE <code>/api/notifications/stream</code>, WebSocket <code>wss://api.gotgan.click/ws/chat</code>)만 브라우저가 <code>api.gotgan.click</code> 에 직접 연결(게이트웨이 globalcors 가 이 두 경로만 허용, <code>/ws/chat</code> 은 permitAll + Origin 확인 — 토큰은 STOMP CONNECT 에서 chat-service 가 검증)</li>
+  <li>접속 신호(11/17): <code>POST /api/presence/ping</code>, <code>/api/presence/leave</code> — 게이트웨이가 업무 서비스로 보내지 않고 바로 204 (permitAll)</li>
   <li>내부: <code>/internal/{자원}</code> — 게이트웨이 미노출</li>
   <li>자원명 복수형, kebab-case (<code>/order-items</code>)</li>
 </ul></div>
@@ -481,6 +482,7 @@ svg .ah2{fill:var(--point)}
 <tr><td><code>blacklist:{jti}</code></td><td>gateway</td><td>로그아웃 즉시 무효화, TTL = 토큰 남은 수명 — <b>미구현</b>(Could)</td><td><span class="p p2">P2</span></td></tr>
 <tr><td><code>blocked:user:{userId}</code></td><td>user(쓰기), gateway, chat(읽기)</td><td>회원 정지, 탈퇴 즉시 차단 — 값 = 사유, TTL = Access Token 수명(<code>app.auth.blocked-user-ttl</code>), 정지 해제 시 삭제</td><td>—</td></tr>
 <tr><td><code>request_rate_limiter.*</code></td><td>gateway</td><td>요청 제한 토큰 버킷(RedisRateLimiter, 키 user, ip, direct, 라우트별) — Redis 장애면 통과</td><td><span class="p p2">P2</span></td></tr>
+<tr><td><code>gotgan:active:visitors</code>, <code>gotgan:active:members</code></td><td>gateway(쓰기), admin(읽기)</td><td>현재 접속자 정렬 집합(마지막 요청 시각) — admin-service 가 최근 1분 안의 수를 셈, 11/17</td><td><span class="p p1">P1</span></td></tr>
 <tr><td>QueryDSL 검색</td><td>product</td><td><code>ProductSearchRepository</code> — 카테고리(상위면 하위 전부), 스토어, 가격대, 키워드 LIKE(상품명, 카테고리명), 품절 제외, 정렬, 페이징을 <code>BooleanBuilder</code>로 조합, 값 없는 조건은 생략</td><td><span class="p p0">P0</span></td></tr>
 </table></div>
 <ul class="b">
@@ -490,7 +492,7 @@ svg .ah2{fill:var(--point)}
 <h4>패키지 구조 — 서비스 내부 (order-service 예)</h4>
 <pre><code>services/order-service/
 ├── build.gradle, settings.gradle, gradle.properties, gradlew, gradle/
-├── Dockerfile, .dockerignore
+├── Dockerfile
 └── src/
     ├── main/java/com/sesac/gojigi/order/
     │   ├── OrderApplication.java
@@ -564,7 +566,7 @@ svg .ah2{fill:var(--point)}
 <h4>서비스별 도메인 패키지</h4>
 <div class="tbl"><table>
 <tr><th>서비스</th><th>common/ 외 패키지</th></tr>
-<tr><td>gateway-service</td><td><code>config/</code>(SecurityConfig — <code>oauth2ResourceServer</code>, Keycloak issuer, 경로 권한, MetricsAccessManager), <code>filter/</code>(UserHeaderFilter — 클레임 → X-User-*, BlockedUserFilter — 차단 회원 401, RateLimitKeyResolver — 요청 제한 키, SuspiciousRequestFilter — 탐색 요청 기록 11/17), UpstreamRetryConfig(GET 재시도, 11/17), <code>exception/</code>(401, 403, 502/504 JSON 응답 핸들러) — 도메인, DB 없음, 라우트, CORS(globalcors)는 <code>application.yml</code></td></tr>
+<tr><td>gateway-service</td><td><code>config/</code>(SecurityConfig — <code>oauth2ResourceServer</code>, Keycloak issuer, 경로 권한, MetricsAccessManager, UpstreamRetryConfig — GET 재시도 11/17), <code>filter/</code>(UserHeaderFilter — 클레임 → X-User-*, BlockedUserFilter — 차단 회원 401, RateLimitKeyResolver — 요청 제한 키, SuspiciousRequestFilter — 탐색 요청 기록 11/17, ActiveUserFilter — 현재 접속자 기록 11/17, PresenceWebFilter — 접속 신호 204 11/17), <code>exception/</code>(401, 403, 502/504 JSON 응답 핸들러) — 도메인, DB 없음, 라우트, CORS(globalcors)는 <code>application.yml</code></td></tr>
 <tr><td>user-service</td><td><code>auth/</code>(가입, 로그인, refresh, 로그아웃 — <code>client/</code> KeycloakClient, KeycloakAdminClient, 소셜 로그인), <code>user/</code>(회원 프로필, 등급, 관리자 회원 내부 API, 판매자 전환 리스너), <code>address/</code>(배송지), <code>point/</code>(적립, 사용, 환원, 회수, 내역)</td></tr>
 <tr><td>store-service</td><td><code>apply/</code>(입점 신청, 심사, 서류, 자동 반려 스케줄러), <code>store/</code>(스토어, 배송 정책, 상태), <code>dashboard/</code>(판매자 대시보드 조합 — <code>client/</code> StatsClient — order, product, settlement 통계)</td></tr>
 <tr><td>product-service</td><td><code>category/</code>(카테고리 트리, 관리), <code>product/</code>(상품, QueryDSL 검색, 통계), <code>option/</code>(옵션, 재고), <code>stock/</code>(예약, 해제, 복원), <code>image/</code>(presign, 메타), <code>store/</code>(스토어 상태 복제 — <code>StoreStatusChanged</code> 리스너)</td></tr>
@@ -598,7 +600,7 @@ gotgan-config/           sesac-final-1/gotgan-config — ArgoCD가 감시하는 
 │   └── observability/   Prometheus, Loki, Zipkin, Grafana, System Status     (2-5)
 ├── infra/terraform/     AWS 자원 (cluster/ 는 매일 08:00 apply, 22:00 destroy, 11/17부터 24시간)    (2-3)
 ├── scripts/             scale-nodes.sh(수동 보조), keycloak-seed.sh(시드 계정, kc-admin-api), build-and-push.sh
-├── loadtest/            k6 부하 테스트 (run.sh, k6/, results/)
+├── loadtest/            k6 부하 테스트 (run.sh, k6/, results/ — Git 제외)
 ├── docs/                adr/, events.md, secrets.md, infra-handoff.md, README.md, CONVENTION.md(발췌본)
 ├── .github/             workflows(infra, infra-schedule, bootstrap, secrets-sync, security)   (2-4)
 └── .gitignore, README.md</code></pre>
@@ -630,7 +632,7 @@ gotgan-config/           sesac-final-1/gotgan-config — ArgoCD가 감시하는 
 <tr><td>구매</td><td>ShopLayout</td><td><code>/cart</code>, <code>/checkout</code>(포인트 사용), <code>/order/complete</code>, <code>/seller/apply</code></td><td>BUYER</td></tr>
 <tr><td>마이페이지</td><td>MyPageLayout</td><td><code>/mypage/orders</code>, <code>/mypage/orders/:id</code>, <code>/mypage/claim/:lineId</code>, <code>/mypage/claims</code>, <code>/mypage/reviews</code>, <code>/mypage/qna</code>, <code>/mypage/points</code>, <code>/mypage/profile</code>, <code>/mypage/addresses</code>, <code>/mypage/chats(/:roomId)</code>(1:1 채팅, 10/27)</td><td>BUYER</td></tr>
 <tr><td>판매자센터</td><td>ConsoleLayout</td><td><code>/seller</code>(대시보드), <code>/seller/products(/new, /:id/edit)</code>, <code>/seller/orders(/:lineId)</code>, <code>/seller/claims</code>, <code>/seller/reviews</code>, <code>/seller/qna</code>, <code>/seller/settlements</code>, <code>/seller/store</code>, <code>/seller/chats(/:roomId)</code>(채팅, 10/27)</td><td>SELLER</td></tr>
-<tr><td>관리자</td><td>ConsoleLayout</td><td><code>/admin</code>(대시보드), <code>/admin/applications(/:id)</code>, <code>/admin/stores(/:id)</code>, <code>/admin/categories</code>, <code>/admin/settlements</code>, <code>/admin/users(/:id)</code>, <code>/admin/reports</code>(신고), <code>/admin/chats(/:roomId)</code>(상담함, 10/27), <code>/admin/system</code>(F-1 장애 시연, Grafana port-forward 안내, 11/16 부하테스트와 실시간 모니터링 패널), <code>/admin/system/report</code>(장애 분석 리포트, 11/17)</td><td>ADMIN</td></tr>
+<tr><td>관리자</td><td>ConsoleLayout</td><td><code>/admin</code>(대시보드), <code>/admin/applications(/:id)</code>, <code>/admin/stores(/:id)</code>, <code>/admin/categories</code>, <code>/admin/settlements</code>, <code>/admin/users(/:id)</code>, <code>/admin/reports</code>(신고), <code>/admin/chats(/:roomId)</code>(상담함, 10/27), <code>/admin/system</code>(F-1 장애 시연, Grafana port-forward 안내, 11/16 부하테스트와 실시간 모니터링 패널, 11/17 현재 접속자), <code>/admin/system/report</code>(장애 분석 리포트, 11/17)</td><td>ADMIN</td></tr>
 </table></div>
 <h4>규칙</h4>
 <ul class="b">
@@ -652,7 +654,7 @@ gotgan-config/           sesac-final-1/gotgan-config — ArgoCD가 감시하는 
 ├── .env.example             VITE_PORTONE_STORE_ID, VITE_PORTONE_CHANNEL_KEY
 └── src/
     ├── main.jsx
-    ├── app/                 router.jsx(경로 → 화면 파일 표, 지연 로딩), RootLayout.jsx, RouteError.jsx, providers.jsx(QueryClient), bootstrap.js(refresh 1회), App.jsx
+    ├── app/                 router.jsx(경로 → 화면 파일 표, 지연 로딩), RootLayout.jsx, RouteError.jsx, providers.jsx(QueryClient), bootstrap.js(refresh 1회), App.jsx, usePresence.js(접속 신호, 11/17)
     ├── pages/               ─ 라우트 1개 = 페이지 파일 1개, features 조립만
     │   ├── shop/            메인, 상품, 스토어, 장바구니, 주문서, 로그인, 가입, 소셜 로그인 콜백, 입점 신청, FAQ, 공지, 수수료, 약관
     │   ├── mypage/          주문, 클레임, 리뷰, 문의, 포인트, 회원정보, 배송지, 채팅
@@ -717,7 +719,7 @@ gotgan-config/           sesac-final-1/gotgan-config — ArgoCD가 감시하는 
 <tr><td>SQS</td><td>구독자별 큐 (user, product, settlement, review, 알림 Lambda, 명세서 Lambda, admin 알림 센터 3큐 — 10/27) + DLQ(최대 수신 3), 필터 정책(본문 <code>eventType</code>), raw delivery</td><td>이벤트 소비</td></tr>
 <tr><td>DynamoDB</td><td><code>sesac-gojigi-notifications</code>(PK USER#, SK 시각#eventId, TTL 90일 — 알림 멱등, 이력), <code>sesac-gojigi-settlement-reports</code>(PK STORE#{storeId}, SK WEEK#{week} — 명세서 발송 이력, 멱등), <code>sesac-gojigi-inbox</code>(PK <code>USER#{id}</code>, <code>STORE#{id}</code>, <code>ADMIN</code>, SK <code>{epochms 13자리}#{eventId}</code> 조건부 저장, TTL 90일 — 알림 센터 알림함, admin-service, 10/27), On-Demand, 그 외 테이블 없음. inbox, settlement-reports 는 매일 08:00 apply 때 새로 만듦(11/6 — DB 초기화와 수명을 맞춤, 이력은 하루만. 11/17부터는 수동 apply 때만)</td><td>Lambda 데이터, 멱등, 알림함</td></tr>
 <tr><td>SES</td><td>발신 이메일 자격 증명, 샌드박스(검증된 주소로만 발송)</td><td>알림, 명세서 메일</td></tr>
-<tr><td>(AWS 밖) GitHub Secrets, Variables</td><td>gotgan-config: 클러스터 시크릿 전부 + <code>AWS_ROLE_ARN</code> / gotgan-backend: <code>AWS_ROLE_ARN</code>, <code>SONAR_TOKEN</code>, <code>SERVERLESS_ACCESS_KEY</code>, <code>CONFIG_REPO_TOKEN</code> / Variables: 계정 ID, 리전, 클러스터 이름</td><td><code>secrets-sync</code> → K8s Secret(<code>mysql-secret</code>, <code>{service}-secret</code>, <code>keycloak-secret</code>, <code>grafana-secret</code>, <code>alert-webhook-secret</code>)</td></tr>
+<tr><td>(AWS 밖) GitHub Secrets, Variables</td><td>gotgan-config: 클러스터 시크릿 전부 + <code>AWS_ROLE_ARN</code> / gotgan-backend: <code>AWS_ROLE_ARN</code>, <code>SONAR_TOKEN</code>, <code>SERVERLESS_ACCESS_KEY</code>, <code>CONFIG_REPO_TOKEN</code> / Variables: 계정 ID, 리전, 클러스터 이름</td><td><code>secrets-sync</code> → K8s Secret(<code>mysql-secret</code>, <code>{service}-service-secret</code>, <code>keycloak-secret</code>, <code>grafana-secret</code>, <code>alert-webhook-secret</code>, <code>loadtest-secret</code> 11/16)</td></tr>
 <tr><td>IAM</td><td>서비스별 IRSA 역할, GitHub Actions OIDC 역할(infra-schedule, bootstrap, backend CI), Lambda 함수별 역할 — <code>kms:Decrypt</code> 없음 (예외: upload-guard 는 암호화된 알림 토픽 <code>sesac-gojigi-alerts</code> 발행용 <code>kms:GenerateDataKey</code>, <code>kms:Decrypt</code>)</td><td>최소 권한</td></tr>
 <tr><td>SSM Parameter Store</td><td><code>/sesac-gojigi/dev/...</code> — 큐, 테이블, 버킷 ARN</td><td>serverless.yml이 읽음</td></tr>
 <tr><td>EIP</td><td>2개 (퍼블릭 서브넷별)</td><td>NLB 고정 IP, Route 53 A 레코드 대상</td></tr>
@@ -836,7 +838,7 @@ gotgan-config/deploy/
 <div class="tbl"><table>
 <tr><th>계층</th><th>관리 주체</th><th>내용</th></tr>
 <tr><td>기본 계층</td><td><code>bootstrap</code> 워크플로 (kubectl, 매일 아침) — 변경 시 같은 명령을 수동으로</td><td>네임스페이스, ConfigMap, Secret(secrets-sync), MySQL, Redis(AOF + PVC), Keycloak, 관측성, ArgoCD</td></tr>
-<tr><td>앱 계층</td><td>ArgoCD</td><td>서비스 10개(gateway + 업무 9 — chat 10/27) Deployment, Service, ServiceAccount, PDB, chaos RBAC (태그만 계속 바뀜)</td></tr>
+<tr><td>앱 계층</td><td>ArgoCD</td><td>서비스 10개(gateway + 업무 9 — chat 10/27) Deployment, Service, ServiceAccount, PDB, chaos RBAC, HPA(11/17) (태그만 계속 바뀜)</td></tr>
 </table></div>
 
 <!-- ---------------- 2-5 Logging ---------------- -->
@@ -1040,7 +1042,7 @@ gotgan-config/                ArgoCD가 감시하는 쪽, 인프라 자동화
 <tr><td><code>src/test/java/…</code></td><td>main과 같은 패키지 구조 — entity 단위 테스트, service 테스트, Testcontainers 통합 테스트</td><td>PR CI</td></tr>
 <tr><td><code>src/test/resources/application-test.yml</code></td><td>테스트용 설정 (Testcontainers 연결)</td><td>테스트 실행 시</td></tr>
 </table></div>
-<div class="note"><b>gateway-service는 다름</b><code>config/</code>(SecurityConfig — Keycloak issuer, JWKS, MetricsAccessManager), <code>filter/</code>(UserHeaderFilter, BlockedUserFilter, RateLimitKeyResolver), <code>exception/</code>만 있고 DB, Flyway 없음. CORS는 <code>application.yml</code> <code>globalcors</code>. 라우트 규칙은 <code>application.yml</code>의 <code>spring.cloud.gateway.server.webflux.routes</code>.</div>
+<div class="note"><b>gateway-service는 다름</b><code>config/</code>(SecurityConfig — Keycloak issuer, JWKS, MetricsAccessManager, UpstreamRetryConfig — GET 재시도 11/17), <code>filter/</code>(UserHeaderFilter, BlockedUserFilter, RateLimitKeyResolver, SuspiciousRequestFilter, ActiveUserFilter, PresenceWebFilter — 뒤 셋 11/17), <code>exception/</code>만 있고 DB, Flyway 없음. CORS는 <code>application.yml</code> <code>globalcors</code>. 라우트 규칙은 <code>application.yml</code>의 <code>spring.cloud.gateway.server.webflux.routes</code>.</div>
 <div class="note"><b>admin-service도 다름</b>대부분 도메인 패키지는 controller, service, dto, client만 — 데이터는 각 서비스 <code>/internal/**</code> 호출로 다룸. 예외: <code>report/</code>(신고, 조치, 10/26), <code>system/</code>(장애 시연 기록, 11/7 — 11/16 부하테스트, 11/16 실시간 모니터링, 11/17 장애 분석 리포트는 DB 없이 쿠버네티스 API, Prometheus, Zipkin, Loki 조회)은 자체 DB admindb(entity, repository, Flyway <code>V1__init_report</code>, <code>V2__chaos_event</code>), <code>notification/</code>은 DynamoDB inbox.</div>
 
 <!-- frontend -->
@@ -1060,10 +1062,11 @@ gotgan-config/                ArgoCD가 감시하는 쪽, 인프라 자동화
 <tr><td><code>src/app/RouteError.jsx</code></td><td>화면 파일 받기 실패(배포 직후 옛 파일) → 새로고침 안내 (10/27)</td></tr>
 <tr><td><code>src/app/providers.jsx</code></td><td>QueryClient Provider (RouterProvider는 <code>App.jsx</code>, <code>ToastHost</code>는 <code>RootLayout.jsx</code>)</td></tr>
 <tr><td><code>src/app/bootstrap.js</code></td><td>부팅 시 <code>/api/auth/refresh</code> 1회 → 로그인 상태 복구, <code>isAuthReady</code> 설정</td></tr>
+<tr><td><code>src/app/usePresence.js</code></td><td>접속 신호 — 탭이 보이는 동안 20초마다 <code>POST /api/presence/ping</code>, 숨기거나 닫으면 <code>/api/presence/leave</code>(관리자 화면 현재 접속자, <code>RootLayout.jsx</code>가 호출, 11/17)</td></tr>
 <tr><td><code>src/shared/layouts/</code></td><td>ShopLayout, MyPageLayout, ConsoleLayout(판매자, 관리자). 콘솔 로고 → 쇼핑몰 메인(<code>/</code>), 로그인 시 쇼핑몰 유틸 바에 마이페이지, 장바구니 링크(11/6)</td></tr>
 <tr><td><code>src/shared/api/</code></td><td><code>axiosInstance.js</code>(토큰 첨부, withCredentials), <code>refresh.js</code>(401 → single-flight 재발급), <code>queryKeys.js</code>(queryKey 팩토리), <code>retry.js</code>(조회 재시도 1회, 429 제외)</td></tr>
 <tr><td><code>src/shared/components/</code></td><td><code>ui/</code> 목업 공통 컴포넌트 (Empty, Modal, Pill, Kpi … 목업 <code>ui.jsx</code> 분리), <code>common/</code> DataTable, BlockPager, SearchInput, SortableHeader, PostcodeSearch (RequireRole은 <code>features/auth/components/</code>)</td></tr>
-<tr><td><code>src/shared/utils/</code></td><td>포맷, 파일 형식 검사, 이미지 대체, 우편번호, <code>safeHtml.js</code>(DOMPurify)</td></tr>
+<tr><td><code>src/shared/utils/</code></td><td>포맷, 파일 형식 검사, 이미지 대체, 우편번호, <code>safeHtml.js</code>(DOMPurify), <code>visitorId.js</code>(방문자 ID, 11/17)</td></tr>
 <tr><td><code>src/shared/stores/</code>, <code>hooks/</code></td><td><code>toastStore.js</code>(토스트), <code>useClientTable.js</code>(목록 정렬, 페이징)</td></tr>
 <tr><td><code>src/features/{feature}/api/</code></td><td>해당 기능 API 함수 (<code>{feature}Api.js</code>)</td></tr>
 <tr><td><code>src/features/{feature}/hooks/</code>, <code>schemas.js</code></td><td>useQuery, useMutation 래핑 훅 (<code>use*Query.js</code>, <code>use*Mutation.js</code>), zod 스키마</td></tr>
@@ -1121,7 +1124,7 @@ gotgan-config/                ArgoCD가 감시하는 쪽, 인프라 자동화
 <tr><td><code>k8s/00-namespace.yaml</code></td><td><code>sesac-gojigi</code> 네임스페이스</td><td>kubectl 1회</td></tr>
 <tr><td><code>k8s/01-configmap.yaml</code></td><td><code>app-config</code>: 프로필, DB/Redis 호스트, 서비스 주소(CoreDNS), Keycloak issuer, Loki/Zipkin 주소, 데모 주기 값, AWS 토픽 ARN, 큐 URL, 버킷 이름</td><td>kubectl, 변경 후 <code>rollout restart</code></td></tr>
 <tr><td><code>k8s/02-networkpolicy.yaml</code></td><td>NetworkPolicy 4개 — <code>db-ingress-from-backend</code>(<code>tier=db</code> 파드 3306, 6379는 <code>tier=backend</code> 파드만), <code>db-egress-deny-except-dns</code>(DB 파드 egress는 kube-dns 53뿐), <code>backend-ingress-from-backend-monitoring</code>(업무 파드는 같은 티어, monitoring 에서만, 11/5), <code>gateway-ingress-from-nlb</code>. 3티어 경계</td><td>kubectl (configmap 직후)</td></tr>
-<tr><td>(파일 없음) Secret <code>mysql-secret</code>, <code>{service}-service-secret</code>, <code>keycloak-secret</code>, <code>grafana-secret</code>, <code>alert-webhook-secret</code></td><td>GitHub Secrets → <code>secrets-sync</code> 워크플로가 <code>kubectl create secret generic ... --dry-run=client -o yaml | kubectl apply</code>로 생성</td><td>bootstrap이 호출, 값 변경 시 수동 실행 + <code>rollout restart</code></td></tr>
+<tr><td>(파일 없음) Secret <code>mysql-secret</code>, <code>{service}-service-secret</code>, <code>keycloak-secret</code>, <code>grafana-secret</code>, <code>alert-webhook-secret</code>, <code>loadtest-secret</code>(11/16)</td><td>GitHub Secrets → <code>secrets-sync</code> 워크플로가 <code>kubectl create secret generic ... --dry-run=client -o yaml | kubectl apply</code>로 생성</td><td>bootstrap이 호출, 값 변경 시 수동 실행 + <code>rollout restart</code></td></tr>
 <tr><td><code>k8s/db/storageclass.yaml</code></td><td><code>ebs-sc</code>: gp3, 암호화, WaitForFirstConsumer</td><td>kubectl 1회</td></tr>
 <tr><td><code>k8s/db/mysql.yaml</code></td><td>Headless Service + StatefulSet(1) + PVC 템플릿(EBS 볼륨 gp3 디스크 20Gi) + 초기화 스크립트 마운트, <code>nodeSelector tier=db</code> + toleration + 라벨 <code>tier: db</code></td><td>kubectl 1회</td></tr>
 <tr><td><code>k8s/db/init-schemas.sh</code></td><td>최초 기동 시 스키마 10개(서비스 9 + keycloakdb — admindb 10/26, chatdb 10/27), 계정, 권한 생성 (docker-compose도 재사용)</td><td>ConfigMap으로 마운트</td></tr>

@@ -162,17 +162,17 @@ svg .arrowhead2{fill:var(--accent)}
 "쇼핑몰을 만든다"가 아니라 <b>이커머스 핵심(상품, 주문, 결제)을 DDD로 쪼개 클라우드 네이티브로 올린, 안 죽는 MSA</b>를 만듭니다. 목표는 기능 수가 아니라 <b>장애 격리, 무중단 배포, 자동 복구를 보여 주는 것</b>과 <b>완성도 높은 핵심 화면</b>입니다(01장).</div>
 <div class="tbl"><table>
 <tr><th>질문</th><th>결론</th><th>장</th></tr>
-<tr><td>서비스 구성</td><td><b>업무 기능(데이터 소유권) 기준으로 Spring 10개 + Keycloak.</b> gateway + 업무 9개(user, store, product, order, payment, review, settlement, admin, chat — chat 은 10/27 추가). <b>admin은 조합 계층</b> — 각 서비스 <code>/internal/**</code>을 호출해 조합하는 관리자용 계층, 자기 DB는 신고, 조치 이력(admindb, ADR-0001 예외 10/26)과 실시간 알림 센터(10/27)만. <b>카테고리(상위/하위)는 product</b>, 카테고리별 수수료는 settlement. 상품문의, 답변은 review, FAQ는 프론트 정적 데이터.</td><td>03</td></tr>
-<tr><td>업무 분장</td><td><b>구지훈</b> AWS IaC, settlement, admin, payment / <b>이경석</b> CI/CD, Keycloak, user, 게이트웨이 인증, order, review / <b>박지연</b> 로깅, 관측성, 헬스 체크, product, store. 발표도 각자 담당 영역을 직접 설명.</td><td>03</td></tr>
+<tr><td>서비스 구성</td><td><b>업무 기능(데이터 소유권) 기준으로 Spring 10개 + Keycloak.</b> gateway + 업무 9개(user, store, product, order, payment, review, settlement, admin, chat — chat 은 10/27 추가). <b>admin은 조합 계층</b> — 각 서비스 <code>/internal/**</code>을 호출해 조합하는 관리자용 계층, 자기 DB는 신고, 조치 이력(admindb, ADR-0001 예외 10/26), F-1 장애 시연 기록(<code>chaos_event</code>, 11/7)과 실시간 알림 센터(10/27)만. <b>카테고리(상위/하위)는 product</b>, 카테고리별 수수료는 settlement. 상품문의, 답변은 review, FAQ는 프론트 정적 데이터.</td><td>03</td></tr>
+<tr><td>업무 분장</td><td><b>구지훈</b> AWS IaC, settlement, admin, payment, chat / <b>이경석</b> CI/CD, Keycloak, user, 게이트웨이 인증, order, review / <b>박지연</b> 로깅, 관측성, 헬스 체크, product, store. 발표도 각자 담당 영역을 직접 설명.</td><td>03</td></tr>
 <tr><td>대시보드</td><td>판매자 대시보드 = store, 관리자 대시보드 = admin 안의 <code>dashboard</code> 패키지. 각 서비스의 <code>/internal/stats/**</code>를 <b>병렬 호출해 DTO 하나로 조합</b>하고, 한 서비스가 죽으면 그 영역만 <code>null</code> + <code>unavailable</code>로 <b>부분 응답(200)</b>. 집계 계산은 데이터 주인 서비스가.</td><td>03, 06</td></tr>
 <tr><td>EC2 크기</td><td>3티어 — 백 티어 <b><code>app</code> t3.xlarge × 2</b>(min 0, max 3, 시연 때 3대) + DB 티어 <b><code>db</code> t3.medium × 1</b>(2a 고정, MySQL, Redis만, NetworkPolicy로 백 티어만 접근). OS는 AL2023. app 파드 약 35개, requests 약 9.8Gi지만 JVM 실사용은 약 12~13Gi라 t3.large × 2로는 여유 1~2Gi, 노드 1대 장애(N-1) 시연 불가 → 10/14 t3.xlarge × 2로 조정(할당 약 29Gi). 11/5 구매 경로 이중화(레플리카 2) 뒤 app 파드 43개, requests 약 11.6Gi(11/10 실측). 11/17 24시간 운영 전환과 함께 HPA(gateway, user, store, product, order 최소 2 최대 4)와 Cluster Autoscaler(app 노드 2~3대)를 추가.</td><td>04</td></tr>
 <tr><td>서빙 도메인</td><td>프론트는 <b>Vercel</b>(기본 HTTPS, PR 미리보기), API는 <b>Route 53</b> 도메인 <code>https://api.gotgan.click</code> → NLB <b>고정 IP(EIP)</b>, <b>ACM</b> 인증서(NLB 443 TLS). Vercel rewrites로 <code>/api/*</code>를 API로 넘겨 브라우저에서는 같은 출처로 보이게.</td><td>05</td></tr>
 <tr><td>서비스별 DB, 장애 격리</td><td>MySQL <b>물리 1대 + 스키마 10개</b>(업무 9 + <code>keycloakdb</code> — admindb 10/26, chatdb 10/27 추가), 계정도 서비스별. 다른 서비스 테이블 FK, JOIN 금지, ID만 참조, 스냅샷 복사, 스키마 변경은 서비스마다 <b>Flyway</b>. 장바구니 원본도 orderdb <code>cart_item</code>(Redis는 캐시). 클러스터를 매일 다시 만들던 기간(~11/16)에는 시연 데이터를 Flyway 시드로 복원(11/17부터 24시간 운영이라 데이터가 남음). 모든 동기 호출은 <b>Resilience4j</b>(타임아웃, 서킷 브레이커, 폴백)로 "서비스 하나를 죽여도 에러 메시지로 1차 처리".</td><td>06</td></tr>
 <tr><td>Saga, 포인트</td><td>order가 오케스트레이터. <b>주문 생성</b> = user(포인트 사용 차감) → product(재고 예약) → payment(결제 준비, 포트원 검증), 실패 시 역순 보상. <b>결제 후 취소, 반품</b> = payment 포트원 취소 → product 재고 복원 → user 사용 포인트 환원. 포인트는 상품주문 실결제 배분액의 <b>5%를 구매확정 때 적립</b>(<code>OrderItemConfirmed</code> 이벤트, 10/29 — 취소, 반품은 구매확정 전에만 되므로 회수 없음), 다음 결제에서 사용.</td><td>06</td></tr>
 <tr><td>결제</td><td><b>payment-service로 분리</b>, <b>포트원(PortOne) V2 테스트 채널</b>. 브라우저 SDK 결제창 → order의 <code>payment/confirm</code> → payment가 포트원 API로 금액, 상태 검증 → 불일치 시 자동 취소. 브라우저는 payment를 직접 부르지 않음(웹훅 제외).</td><td>07</td></tr>
-<tr><td>인증, 인가</td><td><b>Spring Cloud Gateway + Keycloak.</b> 로그인, 가입은 우리 React 화면 → <b>user-service가 Keycloak을 대신 호출</b>(password grant, Admin API). Keycloak은 클러스터 내부 전용, 게이트웨이가 JWKS로 토큰 검증 후 사용자 헤더 주입. Cognito는 검토 후 제외.</td><td>08</td></tr>
-<tr><td>Redis, DynamoDB</td><td>Redis: <b>장바구니 캐시</b>(<code>cart:{userId}</code>) — <b>원본은 MySQL <code>orderdb.cart_item</code></b>, 쓰기는 MySQL 먼저 → Redis 갱신, 읽기는 Redis → 미스, 장애 시 MySQL. Resilience4j <code>redisCart</code> 서킷 + 폴백으로 <b>Redis가 죽어도 장바구니 정상</b>, Redis는 AOF + PVC. 그 밖에 게이트웨이 요청 제한 카운터, 탈퇴, 정지 회원 차단 목록(<code>blocked:user:</code>), 알림 센터, 채팅 파드 간 중계(Pub/Sub), ShedLock 에도 씀. 로그아웃 즉시 무효화 <code>blacklist:{jti}</code>는 Could로 만들지 않음. 리프레시 토큰, 상품 캐시 없음. DynamoDB: <b>Lambda가 쓰는 알림, 명세서 발송 이력(멱등)</b>과 admin 알림 센터 알림함(<code>sesac-gojigi-inbox</code>, 10/27) 3개.</td><td>09</td></tr>
-<tr><td>EDA, 스케줄러</td><td>서비스 간 "일어난 일 통보"는 <b>SNS → SQS(+DLQ)</b>, 토픽 3개(store, order, settlement). 이벤트: <code>StoreApproved</code>, <code>StoreStatusChanged</code>, <code>OrderPaid</code>, <code>OrderItemShipped</code>, <code>OrderItemConfirmed</code>, <code>OrderItemCancelled</code>/<code>Returned</code>, <code>SettlementPaid</code>. 스케줄러: 결제 대기 만료, Saga 복구, 자동 구매확정, 주간 정산, 보완요청 자동 반려.</td><td>10</td></tr>
+<tr><td>인증, 인가</td><td><b>Spring Cloud Gateway + Keycloak.</b> 로그인, 가입은 우리 React 화면 → <b>user-service가 Keycloak을 대신 호출</b>(password grant, Admin API). Keycloak 관리 콘솔은 클러스터 내부 전용(소셜 로그인 화면 <code>/realms/gotgan/**</code>만 gateway 경유 공개), 게이트웨이가 JWKS로 토큰 검증 후 사용자 헤더 주입. Cognito는 검토 후 제외.</td><td>08</td></tr>
+<tr><td>Redis, DynamoDB</td><td>Redis: <b>장바구니 캐시</b>(<code>cart:{userId}</code>) — <b>원본은 MySQL <code>orderdb.cart_item</code></b>, 쓰기는 MySQL 먼저 → Redis 갱신, 읽기는 Redis → 미스, 장애 시 MySQL. Resilience4j <code>redisCart</code> 서킷 + 폴백으로 <b>Redis가 죽어도 장바구니 정상</b>, Redis는 AOF + PVC. 그 밖에 게이트웨이 요청 제한 카운터, 탈퇴, 정지 회원 차단 목록(<code>blocked:user:</code>), 알림 센터, 채팅 파드 간 중계(Pub/Sub), ShedLock, 현재 접속자(11/17) 에도 씀. 로그아웃 즉시 무효화 <code>blacklist:{jti}</code>는 Could로 만들지 않음. 리프레시 토큰, 상품 캐시 없음. DynamoDB: <b>Lambda가 쓰는 알림, 명세서 발송 이력(멱등)</b>과 admin 알림 센터 알림함(<code>sesac-gojigi-inbox</code>, 10/27) 3개.</td><td>09</td></tr>
+<tr><td>EDA, 스케줄러</td><td>서비스 간 "일어난 일 통보"는 <b>SNS → SQS(+DLQ)</b>, 토픽 3개(store, order, settlement). 이벤트: <code>StoreApproved</code>, <code>StoreStatusChanged</code>, <code>OrderPaid</code>, <code>OrderItemShipped</code>, <code>OrderItemDelivered</code>, <code>OrderItemConfirmed</code>, <code>OrderItemCancelled</code>/<code>Returned</code>, <code>OrderClaimRequested</code>, <code>SettlementPaid</code>. 스케줄러: 결제 대기 만료, Saga 복구, 자동 구매확정, 주간 정산, 보완요청 자동 반려.</td><td>10</td></tr>
 <tr><td>서버리스</td><td><b>배치, 로깅만, 사용자 API 없음.</b> 알림 메일(SQS → Lambda → SES), 정산 명세서(<code>SettlementPaid</code> → CSV → S3, SES), 로그 아카이브(매일 03:00 — 11/10 범위 제외, 함수 틀만), 업로드 검사(S3 업로드 → EventBridge → 형식 확인, 10/27). 썸네일 Lambda는 제외.</td><td>11</td></tr>
 <tr><td>CI/CD, 코드 품질</td><td><b>GitHub Actions + ArgoCD</b>(OIDC, 경로 필터, GitOps), 프론트는 Vercel Git 연동. <b>SonarQube Cloud 무료 플랜</b>으로 main 대상 PR에 품질 게이트, 코멘트. SQL Injection은 파라미터 바인딩, XSS는 HTML sanitizer. 시크릿은 <b>GitHub Secrets 단일 소스</b>(<code>secrets-sync</code> 워크플로가 K8s Secret 생성, Secrets Manager, KMS, ESO 없음). 인프라는 11/16까지 <b>매일 08:00 생성, 22:00 삭제</b>(<code>infra-schedule</code>와 <code>bootstrap</code> 워크플로, cluster/만 — 나머지는 상시)였고, <b>11/17부터 24시간 운영</b>(스케줄 DISABLED, 발표 후 수동 destroy).</td><td>12</td></tr>
 <tr><td>관측성, 헬스 체크</td><td>PLG(Prometheus, Loki, Grafana) + Zipkin. <b>Grafana "System Status" 헬스 체크 대시보드</b>로 서비스별 초록/빨강, 죽음 → 복구, 롤링 배포를 시간축에 표시. 시연: 서비스 하나 다운, 자동 복구, 무중단 배포, (가능하면) 롤백, Saga 보상. 관리자 화면에서 파드를 내리는 <b>F-1 장애 시연</b>(admin-service, <code>APP_CHAOS_ENABLED</code> 스위치, 파드 조회, 삭제만 하는 RBAC, 11/7)으로 진행. 11/16 관리자 화면 <b>부하테스트</b>(k6 Job)와 <b>실시간 모니터링</b>, 11/17 <b>장애 분석 리포트</b>(<code>/admin/system/report</code>) 추가.</td><td>13</td></tr>
@@ -231,7 +231,7 @@ svg .arrowhead2{fill:var(--accent)}
 <li><b>서비스 수와 사람 수를 맞춘다.</b> 서비스 10개(10/27 chat 추가) + Keycloak을 3명이 나눕니다: 구지훈(인프라 + settlement, admin, payment, 10/27 추가 기능 — chat, 알림 센터, CSP, DOMPurify, 업로드 검사, 코드 분할), 이경석(CI/CD, Keycloak, gateway 인증 + user, order, review, 10/27 추가 — 요청 제한, 멱등 키), 박지연(관측성 + product, store, 10/27 추가 — Grafana 에러 알림). 추가 기능의 게이트웨이 변경은 구지훈이 PR, 이경석 리뷰. 이경석에게 업무가 몰리므로 구매 흐름 PR은 구지훈을 <b>공동 리뷰어</b>로 두어 리뷰와 막힐 때 지원을 함께 하고, order Saga, payment는 구지훈과 <b>계약(API, 이벤트)을 먼저 확정</b>한 뒤 <b>우선순위</b>(user, gateway 인증 → order Saga → review → 상품문의는 Should)대로 진행합니다.</li>
 <li><b>계약(API, 이벤트) 먼저, 구현은 나중.</b> OpenAPI 명세와 이벤트 스키마를 먼저 합의하면 프론트는 MSW로, 백엔드는 각자 병렬로 개발할 수 있습니다.</li>
 <li><b>통합은 매주 금요일.</b> 1~3일 스프린트로 일하고, 매주 금요일 자체 중간 점검(데모)에서 dev 클러스터의 E2E 시나리오를 돌려 봅니다. 5주차(11-11)에는 전체 흐름을 한 번 완주합니다(실제는 11/2 스크럼에서 앞당겨 11/6 QA 에서 완주 — 스펙 06). 마지막 주에 처음 합치면 반드시 실패합니다.</li>
-<li><b>Must 먼저, 화면은 적게, 완벽하게.</b> 목업 화면 43개를 전부 만들 수 없습니다(당시 기준 — 최종 목업은 화면 54개). 16장의 범위표로 Must를 끝까지 완성한 뒤 Should로 넘어가고, 만들지 않는 화면은 빈 화면 대신 메뉴에서 뺍니다.</li>
+<li><b>Must 먼저, 화면은 적게, 완벽하게.</b> 목업 화면 43개를 전부 만들 수 없습니다(당시 기준 — 최종 목업은 화면 55개). 16장의 범위표로 Must를 끝까지 완성한 뒤 Should로 넘어가고, 만들지 않는 화면은 빈 화면 대신 메뉴에서 뺍니다.</li>
 </ol>
 </section>
 
@@ -342,7 +342,7 @@ svg .arrowhead2{fill:var(--accent)}
 <tr><th>말</th><th>이 프로젝트에서의 뜻</th><th>나누는 기준</th></tr>
 <tr><td>서비스 (마이크로서비스)</td><td>독립적으로 빌드, 배포되는 단위. 저장소 폴더 1개 = Spring Boot 앱 1개 = 이미지 1개 = Deployment 1개</td><td>업무 기능과 <b>데이터 소유권</b></td></tr>
 <tr><td>서버 (노드)</td><td>파드가 올라가는 EC2. 모든 서비스가 노드 2~3대를 함께 씁니다</td><td>자원량(메모리, 파드 수). 서비스마다 서버를 따로 두지 않습니다</td></tr>
-<tr><td>파드 레플리카</td><td>같은 서비스의 복제본. 가용성(한 파드가 죽어도 응답) 때문에 늘립니다</td><td>게이트웨이 2, 구매 경로(user, store, product, order, payment) 2, 나머지(settlement, review, admin, chat) 1(11/5). 롤링 배포 중에는 잠깐 새 파드가 1개 더 뜸</td></tr>
+<tr><td>파드 레플리카</td><td>같은 서비스의 복제본. 가용성(한 파드가 죽어도 응답) 때문에 늘립니다</td><td>게이트웨이 2, 구매 경로(user, store, product, order, payment) 2, 나머지(settlement, review, admin, chat) 1(11/5). 11/17부터 gateway, user, store, product, order는 HPA로 최대 4. 롤링 배포 중에는 잠깐 새 파드가 1개 더 뜸</td></tr>
 </table></div>
 
 <h3>서비스를 나누는 6가지 질문</h3>
@@ -380,7 +380,7 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <p>admin-service는 이름만 보면 액터 기준 서비스 같지만, 위의 위험(같은 데이터를 여러 서비스가 고침)이 생기지 않도록 만듭니다.</p>
 <div class="tbl"><table>
 <tr><th>기준</th><th>위험한 액터 분할</th><th>우리 admin-service</th></tr>
-<tr><td>DB</td><td>관리자 서비스가 자기 DB를 갖거나 남의 테이블을 직접 고침</td><td><b>원칙은 DB 없음.</b> 예외는 신고, 조치 이력(admindb — 신고가 리뷰, 회원 두 도메인에 걸치고 처리 주체가 관리자라 ADR-0001 예외, 10/26)뿐. 남의 테이블은 여전히 <code>/internal/**</code>로만</td></tr>
+<tr><td>DB</td><td>관리자 서비스가 자기 DB를 갖거나 남의 테이블을 직접 고침</td><td><b>원칙은 DB 없음.</b> 예외는 신고, 조치 이력(admindb — 신고가 리뷰, 회원 두 도메인에 걸치고 처리 주체가 관리자라 ADR-0001 예외, 10/26)과 F-1 장애 시연 기록(<code>chaos_event</code>, 11/7)뿐. 남의 테이블은 여전히 <code>/internal/**</code>로만</td></tr>
 <tr><td>데이터 주인</td><td>액터별로 흩어짐</td><td>그대로 <b>기능별 서비스</b>(입점은 store, 카테고리는 product, 수수료, 정산은 settlement)</td></tr>
 <tr><td>변경 방법</td><td>테이블 직접 UPDATE</td><td>주인 서비스의 <code>/internal/**</code> API를 호출 → 검증, 상태 전이는 주인이 수행</td></tr>
 <tr><td>역할</td><td>업무 로직을 나눠 가짐</td><td><b>관리자 화면 전용 조합 계층(BFF, Backend For Frontend)</b>: 관리자 API의 단일 진입점 + 여러 서비스 응답 조합 + 관리자 대시보드</td></tr>
@@ -390,8 +390,8 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <h3>서비스 구성 (게이트웨이 + 업무 서비스 9개 + Keycloak)</h3>
 <div class="tbl"><table>
 <tr><th>서비스, 포트</th><th>소유 데이터, 기능</th><th>구매자 API</th><th>판매자 API</th><th>관리자 기능 (admin이 <code>/internal/**</code>로 호출)</th><th>저장소</th><th>담당</th></tr>
-<tr><td><b>gateway-service</b> :8080</td><td>없음 — 라우팅, JWT 검증(Keycloak JWKS), 사용자 헤더 주입, CORS</td><td colspan="3">모든 <code>/api/**</code> 진입점</td><td>Redis 요청 제한 카운터, 차단 목록 <code>blocked:user:</code> 확인(<code>blacklist:</code>는 Could, 미구현)</td><td>이경석</td></tr>
-<tr><td><b>Keycloak</b> :8080 (클러스터 내부)</td><td>계정(이메일, 비밀번호), 역할, 토큰 발급</td><td colspan="3">외부에 노출하지 않음. user-service가 대신 호출(08장)</td><td>MySQL keycloakdb</td><td>이경석</td></tr>
+<tr><td><b>gateway-service</b> :8080</td><td>없음 — 라우팅, JWT 검증(Keycloak JWKS), 사용자 헤더 주입, CORS</td><td colspan="3">모든 <code>/api/**</code> 진입점</td><td>Redis 요청 제한 카운터, 차단 목록 <code>blocked:user:</code> 확인(<code>blacklist:</code>는 Could, 미구현), 현재 접속자 <code>gotgan:active:</code>(11/17)</td><td>이경석</td></tr>
+<tr><td><b>Keycloak</b> :8080 (클러스터 내부)</td><td>계정(이메일, 비밀번호), 역할, 토큰 발급</td><td colspan="3">관리 콘솔은 외부에 노출하지 않음(소셜 로그인 화면 <code>/realms/gotgan/**</code>만 gateway 경유). user-service가 대신 호출(08장)</td><td>MySQL keycloakdb</td><td>이경석</td></tr>
 <tr><td><b>user-service</b> :8081</td><td>회원 프로필, 배송지, 포인트(적립, 사용), 회원등급</td><td>가입, 로그인, refresh, 로그아웃(Keycloak 대리), 내 정보, 배송지, 포인트</td><td>(로그인 공용)</td><td>회원 조회</td><td>MySQL userdb</td><td>이경석</td></tr>
 <tr><td><b>store-service</b> :8082</td><td>입점 신청, 심사, 서류, 스토어(상태, 배송정책), <b>판매자 대시보드(조합)</b></td><td>스토어 홈, 목록, 입점 신청</td><td>스토어 설정, 판매자 대시보드</td><td>입점 승인, 반려, 보완요청, 스토어 상태</td><td>MySQL storedb, S3 seller-docs</td><td>박지연</td></tr>
 <tr><td><b>product-service</b> :8083</td><td>상품, 옵션, 재고, 이미지 메타, <b>카테고리(상위/하위)</b></td><td>카테고리, 목록, QueryDSL 검색, 상세</td><td>상품 CRUD, 재고</td><td>카테고리 관리, 강제 판매중지</td><td>MySQL productdb, S3 images(<code>products/</code>)</td><td>박지연</td></tr>
@@ -399,7 +399,7 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <tr><td><b>payment-service</b> :8086</td><td>결제, 포트원 V2 검증/취소, 웹훅</td><td>직접 호출 없음(order 경유), 포트원 웹훅만</td><td>—</td><td>결제 조회</td><td>MySQL paymentdb</td><td>구지훈</td></tr>
 <tr><td><b>review-service</b> :8087</td><td>리뷰(사진, 별점), 판매자 답글, <b>상품문의, 답변</b>, 리뷰 작성 자격</td><td>리뷰 작성, 조회, 상품문의</td><td>리뷰 답글, 문의 답변</td><td>—</td><td>MySQL reviewdb, S3 images(<code>reviews/</code>)</td><td>이경석</td></tr>
 <tr><td><b>settlement-service</b> :8085</td><td>정산 적재, 주간 집계, 지급, 보류, <b>카테고리별 수수료</b></td><td>—</td><td>정산 내역</td><td>수수료 관리, 정산 집계, 지급 실행</td><td>MySQL settlementdb</td><td>구지훈</td></tr>
-<tr><td><b>admin-service</b> :8088</td><td>관리자 API 진입점, <code>/internal/**</code> 호출 조합, <b>관리자 대시보드(조합)</b>, 신고, 조치 이력(10/26), <b>실시간 알림 센터</b>(SSE, 10/27)</td><td>신고 접수 <code>/api/reports</code>, 알림 <code>/api/notifications/**</code></td><td>신고(리뷰 검토 요청), 알림</td><td>모든 <code>/api/admin/**</code></td><td>MySQL admindb(신고, 조치 이력만), DynamoDB(알림함), Redis <code>notify:</code></td><td>구지훈</td></tr>
+<tr><td><b>admin-service</b> :8088</td><td>관리자 API 진입점, <code>/internal/**</code> 호출 조합, <b>관리자 대시보드(조합)</b>, 신고, 조치 이력(10/26), <b>실시간 알림 센터</b>(SSE, 10/27), 시스템 화면(F-1 장애 시연 11/7, 부하테스트 11/16, 장애 분석 리포트 11/17)</td><td>신고 접수 <code>/api/reports</code>, 알림 <code>/api/notifications/**</code></td><td>신고(리뷰 검토 요청), 알림</td><td>모든 <code>/api/admin/**</code></td><td>MySQL admindb(신고, 조치 이력, 장애 시연 기록), DynamoDB(알림함), Redis <code>notify:</code>, <code>gotgan:active:</code></td><td>구지훈</td></tr>
 <tr><td><b>chat-service</b> :8089</td><td><b>1:1 채팅</b> — 스토어 톡, 판매자 운영 상담, 고객센터 1:1 상담(10/27 추가)</td><td>스토어 톡, 고객센터 상담 <code>/api/chats/**</code>, <code>/ws/chat</code></td><td>고객 톡 답변, 운영팀 상담</td><td>상담함(<code>/api/chats/**</code> — 관리자 역할)</td><td>MySQL chatdb, Redis <code>chat:room:</code>, <code>chat:presence:</code></td><td>구지훈</td></tr>
 </table></div>
 <p class="cap">MySQL 1대, 스키마 10개(<code>userdb</code> <code>storedb</code> <code>productdb</code> <code>orderdb</code> <code>paymentdb</code> <code>reviewdb</code> <code>settlementdb</code> <code>admindb</code> <code>chatdb</code> <code>keycloakdb</code>), DB 계정도 서비스별. 서버리스(알림 메일, 정산 명세서, 로그 아카이브, 업로드 검사)는 11장.</p>
@@ -543,9 +543,9 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <p>각자 <b>자기 서비스의 백엔드 + DB + 그 서비스를 쓰는 모든 화면</b>을 한 사람이 끝까지 책임지는 수직 분할입니다. 인프라도 한 사람이 끝까지 만들어 공유합니다.</p>
 <div class="tbl"><table>
 <tr><th>담당자</th><th>인프라</th><th>서비스, 도메인</th><th>서버리스</th></tr>
-<tr><td><b>구지훈</b></td><td>AWS IaC(Terraform) 전체, SonarQube Cloud 연동 설정</td><td>settlement-service, admin-service (스마트스토어 관리자 도메인, 알림 센터 10/27), payment-service (결제, 포트원), chat-service (1:1 채팅, 10/27)</td><td>알림 메일, 정산 명세서, 업로드 검사(10/27)</td></tr>
-<tr><td><b>이경석</b></td><td>CI/CD(GitHub Actions, ArgoCD), Keycloak</td><td>user-service, gateway 인증 연동 (회원, 인증, 인가), order-service, review-service (구매 흐름)</td><td>—</td></tr>
-<tr><td><b>박지연</b></td><td>로깅, 관측성(Prometheus, Loki, Grafana, Zipkin), 헬스 체크 대시보드</td><td>product-service, store-service (판매자 스토어 도메인)</td><td>로그 아카이브</td></tr>
+<tr><td><b>구지훈</b></td><td>AWS IaC(Terraform) 전체</td><td>settlement-service, admin-service (스마트스토어 관리자 도메인, 알림 센터 10/27), payment-service (결제, 포트원), chat-service (1:1 채팅, 10/27)</td><td>알림 메일, 정산 명세서, 업로드 검사(10/27)</td></tr>
+<tr><td><b>이경석</b></td><td>CI/CD(GitHub Actions, ArgoCD, SonarQube Cloud), Keycloak</td><td>user-service, gateway 인증 연동 (회원, 인증, 인가), order-service, review-service (구매 흐름)</td><td>—</td></tr>
+<tr><td><b>박지연</b></td><td>로깅, 관측성(Prometheus, Loki, Grafana, Zipkin), 헬스 체크 대시보드</td><td>product-service, store-service (판매자 스토어 도메인)</td><td>로그 아카이브(11/10 범위 제외, 함수 틀만)</td></tr>
 </table></div>
 
 <h4>운영 원칙</h4>

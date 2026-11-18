@@ -1854,7 +1854,7 @@ Cognito는 검토했으나 제외했습니다. 서버리스를 배치, 로깅으
 <tr><td>Realm 역할</td><td><code>BUYER</code>(가입 시), <code>SELLER</code>(입점 승인 시 추가), <code>ADMIN</code>(시드로만). 한 사람이 BUYER + SELLER를 함께 가짐</td></tr>
 <tr><td>사용자 속성</td><td><code>user_id</code>(userdb BIGINT), <code>store_id</code>(판매자만). Keycloak 24+는 <b>User Profile에 선언한 속성만 저장</b>하므로 realm의 User Profile에 두 속성을 선언하고 편집 권한은 관리자만</td></tr>
 <tr><td>프로토콜 매퍼</td><td>User Attribute <code>user_id</code> → 클레임 <code>user_id</code>(JSON 타입 long), <code>store_id</code> → <code>store_id</code>, User Realm Role → 클레임 <code>roles</code>(multivalued). Access Token에 추가 켬</td></tr>
-<tr><td>클라이언트</td><td><code>gotgan-backend</code> — confidential(Client authentication 켬), <b>Direct Access Grants 켬</b>, Standard Flow 끔, <b>Service Accounts 켬</b> + <code>realm-management</code>의 <code>manage-users</code> 역할 (역할 조회가 막히면 <code>view-realm</code> 추가). 26.8.2 부터 Admin API 토큰에 <code>kc-admin-api</code> 클라이언트 스코프가 있어야 함 → <code>scripts/keycloak-seed.sh</code> 가 기본 스코프로 할당(11/6, 매일 bootstrap, 멱등)</td></tr>
+<tr><td>클라이언트</td><td><code>gotgan-backend</code> — confidential(Client authentication 켬), <b>Direct Access Grants 켬</b>, Standard Flow 켬(소셜 로그인 콜백용), <b>Service Accounts 켬</b> + <code>realm-management</code>의 <code>manage-users</code> 역할 (역할 조회가 막히면 <code>view-realm</code> 추가). 26.8.2 부터 Admin API 토큰에 <code>kc-admin-api</code> 클라이언트 스코프가 있어야 함 → <code>scripts/keycloak-seed.sh</code> 가 기본 스코프로 할당(11/6, 매일 bootstrap, 멱등)</td></tr>
 <tr><td>토큰 수명</td><td>Access Token 30분, SSO Session Idle / Max 14일(= Refresh 수명), Revoke Refresh Token 켬</td></tr>
 <tr><td>보안</td><td>Brute Force Detection 켬, 비밀번호 정책(8자 이상 등), 이메일을 username으로 사용</td></tr>
 <tr><td>client secret</td><td>realm JSON에는 <code>${GOTGAN_BACKEND_CLIENT_SECRET}</code> 자리표시자만(import 시 환경 변수 치환). 실제 값은 GitHub Secret <code>KEYCLOAK_CLIENT_SECRET</code> → secrets-sync → <code>keycloak-secret</code>(Keycloak), <code>user-service-secret</code>(user-service)</td></tr>
@@ -1942,6 +1942,7 @@ public class SecurityConfig {
                 .authorizeExchange(auth -&gt; auth
                         .pathMatchers(HttpMethod.OPTIONS, "/api/notifications/stream").permitAll()   // 실시간 알림 CORS preflight
                         .pathMatchers(HttpMethod.GET, "/ws/chat").permitAll()                  // 채팅 WebSocket 핸드셰이크 — 토큰은 STOMP CONNECT
+                        .pathMatchers(HttpMethod.POST, "/api/presence/ping", "/api/presence/leave").permitAll()   // 접속 신호(11/17, PresenceWebFilter 가 바로 204)
                         .pathMatchers("/api/auth/**").permitAll()                              // 가입, 로그인, refresh, 로그아웃
                         .pathMatchers(HttpMethod.POST, "/api/payments/webhook").permitAll()      // 포트원 웹훅 (서명은 payment가 검증)
                         .pathMatchers("/actuator/health/**").permitAll()
@@ -1969,7 +1970,6 @@ public class SecurityConfig {
         authorities.setAuthorityPrefix("ROLE_");
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(authorities);
-        converter.setPrincipalClaimName("user_id");
         return new ReactiveJwtAuthenticationConverterAdapter(converter);
     }
 }</code></pre>
@@ -2003,9 +2003,21 @@ public class UserHeaderFilter implements GlobalFilter, Ordered {
     }
 
     @Override
-    public int getOrder() { return 0; }
+    public int getOrder() { return -1; }   // 차단 목록 확인(BlockedUserFilter, -2) 다음, 라우팅 전
 }</code></pre>
 <p>각 서비스는 이 헤더를 읽는 <code>@CurrentUser AuthUser</code> 인자 리졸버를 공통 템플릿으로 갖습니다(15장). 서비스는 토큰을 다시 검증하지 않습니다.</p>
+<p class="cap">게이트웨이 필터 순서 (gateway-service <code>filter</code>, <code>config</code> 패키지 — 위에서부터 실행)</p>
+<div class="tbl"><table>
+<tr><th>#</th><th>필터</th><th>순서 값</th><th>하는 일</th></tr>
+<tr><td>1</td><td><code>SuspiciousRequestFilter</code> (11/17)</td><td>WebFilter, 가장 먼저</td><td><code>/.env</code>, <code>/.git</code>, <code>../</code>, <code>/wp-</code>, <code>.php</code> 같은 탐색 요청을 WARN 로그 + 카운터로 기록만 하고 막지 않음 (13장)</td></tr>
+<tr><td>2</td><td>Spring Security (<code>SecurityConfig</code>)</td><td>WebFilter, -100</td><td>JWT 검증, 경로별 역할 확인 → 401, 403</td></tr>
+<tr><td>3</td><td><code>PresenceWebFilter</code> (11/17)</td><td>WebFilter, 맨 뒤 쪽</td><td><code>POST /api/presence/ping</code>, <code>/api/presence/leave</code> 를 업무 서비스로 보내지 않고 바로 204, 현재 접속자에 넣고 빼기</td></tr>
+<tr><td>4</td><td><code>BlockedUserFilter</code></td><td>GlobalFilter, -2</td><td>Redis 차단 목록 <code>blocked:user:{userId}</code> 확인 → 401 (Redis 장애면 통과)</td></tr>
+<tr><td>5</td><td><code>UserHeaderFilter</code></td><td>GlobalFilter, -1</td><td>클라이언트 <code>X-User-*</code> 제거 후 토큰 값으로 다시 붙임</td></tr>
+<tr><td>6</td><td><code>ActiveUserFilter</code> (11/17)</td><td>GlobalFilter, 0</td><td>현재 접속자 기록 <code>gotgan:active:*</code> (부하테스트 헤더, 액추에이터는 제외, 기다리지 않음)</td></tr>
+<tr><td>7</td><td>요청 제한 <code>RequestRateLimiter</code> (10/27)</td><td>라우트 필터, 1</td><td>Redis 토큰 버킷 → 429 (09장)</td></tr>
+<tr><td>8</td><td>업스트림 재시도 (11/17)</td><td>GlobalFilter, 라우팅 직전</td><td>GET 만, 연결 실패, 끊김(PrematureClose)일 때 최대 2번 다시 보냄. 5xx, 응답 타임아웃은 재시도 안 함</td></tr>
+</table></div>
 
 <h3>인가는 두 층으로</h3>
 <div class="tbl"><table>
@@ -2068,18 +2080,19 @@ public class UserHeaderFilter implements GlobalFilter, Ordered {
 <!-- ============================================================ 07 -->
 <section id="s7">
 <h2><span class="n">09</span>Redis, DynamoDB 활용처</h2>
-<p class="lead">세 저장소의 역할: <b>MySQL</b>은 서비스의 원본 데이터, <b>Redis</b>는 빠르고 사라져도 되는(또는 TTL이 있는) 데이터, <b>DynamoDB</b>는 서버 없이 키로 바로 찾는 데이터(Lambda 쪽). 이번 범위에서 Redis는 장바구니 캐시, 게이트웨이 요청 제한(10/27), 알림 센터, 채팅 실시간 중계(10/27), 탈퇴, 정지 회원 차단 목록(<code>blocked:user:</code>)에 쓰고(로그아웃용 <code>blacklist:{jti}</code>는 Could — 만들지 않음), DynamoDB는 테이블 3개(알림함 inbox 10/27 포함)만 씁니다. 장바구니도 <b>원본은 MySQL</b>이고 Redis는 캐시입니다.</p>
+<p class="lead">세 저장소의 역할: <b>MySQL</b>은 서비스의 원본 데이터, <b>Redis</b>는 빠르고 사라져도 되는(또는 TTL이 있는) 데이터, <b>DynamoDB</b>는 서버 없이 키로 바로 찾는 데이터(Lambda 쪽). 이번 범위에서 Redis는 장바구니 캐시, 게이트웨이 요청 제한(10/27), 알림 센터, 채팅 실시간 중계와 접속 표시(10/27), 탈퇴, 정지 회원 차단 목록(<code>blocked:user:</code>), 현재 접속자(<code>gotgan:active:*</code>, 11/17)에 쓰고(ShedLock 잠금은 Redis 가 아니라 각 서비스 MySQL, 로그아웃용 <code>blacklist:{jti}</code>는 Could — 만들지 않음), DynamoDB는 테이블 3개(알림함 inbox 10/27 포함)만 씁니다. 장바구니도 <b>원본은 MySQL</b>이고 Redis는 캐시입니다.</p>
 
 <h3>Redis — 장바구니 캐시 + (선택) 로그아웃 차단 목록 + 실시간 중계(10/27)</h3>
 <div class="tbl"><table>
 <tr><th>용도</th><th>소유 서비스</th><th>키, 구조</th><th>TTL</th><th>원본</th><th>우선순위</th></tr>
 <tr><td>장바구니 <b>캐시</b></td><td>order</td><td><code>cart:{userId}</code> Hash (field=optionId, value=수량)</td><td>30일 (담을 때마다 연장)</td><td>MySQL <code>orderdb.cart_item</code>(06장)</td><td><span class="tag must">Must</span></td></tr>
 <tr><td>Access Token 차단 목록 (로그아웃 즉시 무효)</td><td>gateway (기록은 user-service 로그아웃 시)</td><td><code>blacklist:{jti}</code></td><td>토큰 남은 수명 (최대 30분)</td><td>없음 (Redis 전용)</td><td><span class="tag could">Could</span> 미구현 — 로그아웃은 Keycloak 세션, Refresh Token 폐기까지</td></tr>
-<tr><td>탈퇴, 이용정지 회원의 남은 Access Token 차단</td><td>gateway <code>BlockedUserFilter</code>가 확인 (기록은 user-service 탈퇴, 정지 시, 해제 때 삭제)</td><td><code>blocked:user:{userId}</code> = 사유(withdrawn, suspended)</td><td>30분 (Access Token 수명과 같게)</td><td>없음 (Redis 전용)</td><td>구현</td></tr>
+<tr><td>탈퇴, 이용정지 회원의 남은 Access Token 차단</td><td>gateway <code>BlockedUserFilter</code>, chat STOMP CONNECT 가 확인 (기록은 user-service 탈퇴, 정지 시, 해제 때 삭제)</td><td><code>blocked:user:{userId}</code> = 사유(withdrawn, suspended)</td><td>30분 (Access Token 수명과 같게)</td><td>없음 (Redis 전용)</td><td>구현</td></tr>
 <tr><td>요청 제한 (10/27)</td><td>gateway</td><td>Spring Cloud Gateway <code>RedisRateLimiter</code> 토큰 버킷(키는 로그인 사용자, IP) — POST 로그인, 가입은 분당 30회, 나머지 API 는 초당 20회(몰아서 40회)</td><td>자동</td><td>없음 (Redis 전용 — Redis 응답이 500ms 넘으면 통과)</td><td><span class="tag could">Could</span></td></tr>
 <tr><td>알림 센터 실시간 전달 (10/27)</td><td>admin</td><td>Pub/Sub 채널 <code>notify:{받는 쪽}</code>(<code>USER#{id}</code>, <code>STORE#{id}</code>, <code>ADMIN</code>) — 모든 파드가 자기 SSE 연결에 전달</td><td>없음 (메시지)</td><td>DynamoDB <code>sesac-gojigi-inbox</code></td><td><span class="tag could">Could</span></td></tr>
 <tr><td>1:1 채팅 파드 간 중계 (10/27)</td><td>chat</td><td>Pub/Sub 채널 <code>chat:room:{roomId}</code> — 파드당 패턴 구독 <code>chat:room:*</code> 1개</td><td>없음 (메시지)</td><td>MySQL <code>chatdb.chat_message</code></td><td><span class="tag could">Could</span></td></tr>
 <tr><td>채팅 접속 중 표시 (10/27)</td><td>chat</td><td><code>chat:presence:{roomId}</code> ZSET (점수 = 만료 시각, 살아 있는 구독은 20초마다 연장) — 보고 있는 쪽엔 알림을 보내지 않음</td><td>60초</td><td>없음 (Redis 전용 — 확인 실패면 알림을 보냄)</td><td><span class="tag could">Could</span></td></tr>
+<tr><td>현재 접속자 (11/17, 관리자 시스템 화면)</td><td>gateway <code>ActiveUserFilter</code>, <code>PresenceWebFilter</code>가 기록, admin <code>VisitorService</code>가 셈</td><td><code>gotgan:active:visitors</code>(방문자 전부), <code>gotgan:active:members</code>(로그인 회원), <code>gotgan:active:role:{ADMIN, SELLER, BUYER}</code> ZSET (점수 = 마지막 요청 시각, 같은 사람은 15초에 한 번만 기록)</td><td>없음 — 최근 1분 안만 세고 읽을 때 오래된 항목 삭제</td><td>없음 (Redis 전용 — 실패면 화면 '-')</td><td>구현</td></tr>
 </table></div>
 <p>장바구니에 Redis를 쓰는 이유: 읽기, 쓰기가 잦고, 가격, 재고는 어차피 조회 시 product에서 다시 확인하므로 장바구니에는 "무엇을 몇 개"만 있으면 됩니다. 그런데 Redis 1대만 믿으면 <b>Redis 파드 하나가 죽었을 때 장바구니가 비거나 주문서가 막힙니다</b> — "안 죽는 MSA"라는 목표와 맞지 않습니다. 그래서 (10/13 결정) <b>원본은 MySQL <code>cart_item</code></b>에 두고 Redis는 앞단 캐시로만 씁니다. Redis가 없어도 장바구니는 동작하고 응답이 조금 느려질 뿐입니다.</p>
 <div class="tbl"><table>
@@ -2087,7 +2100,7 @@ public class UserHeaderFilter implements GlobalFilter, Ordered {
 <tr><td>쓰기 (담기, 수량 변경, 체크, 삭제)</td><td><b>MySQL 먼저</b> 커밋 → Redis 해시 갱신 (write-through)</td><td>Redis 갱신 실패는 <b>무시하고 WARN 로그만</b> — 다음 읽기에서 MySQL로 다시 채워지므로 데이터는 안 어긋남</td></tr>
 <tr><td>읽기 (장바구니 조회, 주문서)</td><td>Redis 조회 → 미스면 MySQL 조회 후 Redis에 채움 (read-through)</td><td>서킷이 열리면 Redis를 건너뛰고 <b>MySQL만 조회</b> — 결과는 같고 지연만 늘어남</td></tr>
 <tr><td>Redis 호출 보호</td><td>Resilience4j 서킷 브레이커 인스턴스 <code>redisCart</code> + 폴백 메서드 (06장 표준과 같은 방식, 대상이 서비스가 아니라 Redis)</td><td>타임아웃, 연결 실패가 쌓이면 OPEN → 즉시 폴백(fast-fail), 10초 뒤 HALF_OPEN으로 복구 확인(06장 <code>default</code> 설정). 상태는 Grafana 서킷 패널에 보임 → 13장 시연 ⑦</td></tr>
-<tr><td>인프라</td><td>Redis에 <b>AOF(<code>appendonly yes</code>) + PVC(<code>ebs-sc</code> 1Gi)</b> — <b>EBS 볼륨(gp3 디스크)</b>이지 ElastiCache가 아님. MySQL과 함께 <code>db</code> 노드(t3.medium, 2a)에 뜨고, NetworkPolicy로 백 티어 파드만 6379에 접근(04장). <code>maxmemory 200mb</code>, <code>noeviction</code>(가득 차면 지우지 않고 쓰기 오류)</td><td>파드 재시작, 노드 교체에도 캐시 유지 (매일 22:00 클러스터 삭제 뒤에는 MySQL 원본에서 다시 채움)</td></tr>
+<tr><td>인프라</td><td>Redis에 <b>AOF(<code>appendonly yes</code>) + PVC(<code>ebs-sc</code> 1Gi)</b> — <b>EBS 볼륨(gp3 디스크)</b>이지 ElastiCache가 아님. MySQL과 함께 <code>db</code> 노드(t3.medium, 2a)에 뜨고, NetworkPolicy로 백 티어 파드만 6379에 접근(04장). <code>maxmemory 200mb</code>, <code>noeviction</code>(가득 차면 지우지 않고 쓰기 오류)</td><td>파드 재시작, 노드 교체에도 캐시 유지 (11/16까지는 매일 22:00 클러스터 삭제 뒤 MySQL 원본에서 다시 채움, 11/17부터 24시간 운영)</td></tr>
 </table></div>
 <p class="cap">order-service <code>cart</code> 패키지 — 읽기 경로 + 폴백 (핵심만)</p>
 <pre><code>@Slf4j
@@ -2147,8 +2160,8 @@ resilience4j:
 <p><code>CartRedisRepository</code>의 쓰기 메서드에도 같은 <code>redisCart</code> 인스턴스를 적용해, 서킷이 열린 동안은 캐시 갱신 시도 자체를 즉시 건너뜁니다(매 요청마다 0.5초씩 기다리지 않음). <code>checked</code>(주문서 포함 여부)처럼 자주 안 바뀌는 값은 MySQL에만 두고, Redis 해시에는 "옵션 → 수량"만 둡니다.</p>
 <p>리프레시 토큰은 Redis에 두지 않습니다. 토큰, 세션은 Keycloak이 관리합니다(08장). <code>blacklist:{jti}</code>(Could)는 원본 없이 Redis 전용입니다 — Redis가 죽어 있는 동안은 즉시 무효화가 안 되고 토큰 만료(최대 30분)까지만 유효한데, Could 기능이라 감수합니다.</p>
 <div class="box rec"><b class="t">Redis 하나를 여러 서비스가 쓸 때</b>
-물리 Redis 1대를 공유하더라도 <b>키 접두어를 서비스별로 고정</b>(order는 <code>cart:*</code>, gateway는 <code>request_rate_limiter.*</code>, user, gateway는 <code>blocked:user:*</code>, chat은 <code>chat:*</code>, admin은 <code>notify:*</code>)하세요. 더 엄격하게 하려면 Redis 6+ ACL로 서비스 계정마다 키 패턴을 제한할 수 있습니다(<code>ACL SETUSER order on &gt;pw ~cart:* +@all</code>).</div>
-<p><b>Redis를 쓰지 않을 곳:</b> 재고 차감(06장의 조건부 UPDATE로 충분), 토큰, 세션(Keycloak), 주문 데이터(영속성 필요).</p>
+물리 Redis 1대를 공유하더라도 <b>키 접두어를 서비스별로 고정</b>(order는 <code>cart:*</code>, gateway는 <code>request_rate_limiter.*</code>, user, gateway는 <code>blocked:user:*</code>, chat은 <code>chat:*</code>, admin은 <code>notify:*</code>, gateway, admin은 <code>gotgan:active:*</code>)하세요. 더 엄격하게 하려면 Redis 6+ ACL로 서비스 계정마다 키 패턴을 제한할 수 있습니다(<code>ACL SETUSER order on &gt;pw ~cart:* +@all</code>).</div>
+<p><b>Redis를 쓰지 않을 곳:</b> 재고 차감(06장의 조건부 UPDATE로 충분), 토큰, 세션(Keycloak), 주문 데이터(영속성 필요), 스케줄러 잠금(ShedLock 은 각 서비스 MySQL <code>shedlock</code> 테이블, JDBC 잠금 — 10장).</p>
 <div class="box warn"><b class="t">조회 캐시는 이번 범위에서 제외</b>
 상품 상세 캐시(<code>@Cacheable</code>) 같은 조회 캐시는 쓰지 않습니다. 데모 규모에서는 MySQL 조회로 충분하고, 캐시 무효화 버그가 핵심 시연(장애 격리, 무중단 배포)을 흐리게 만들 수 있습니다. 장바구니 캐시는 예외입니다 — 성능이 아니라 "Redis가 죽어도 장바구니가 산다"를 위해 원본을 MySQL로 옮기면서 Redis가 캐시가 된 것이고, 해시 한 종류, 사용자 단위 무효화라 버그 여지가 작습니다. 실무에서 캐시, 읽기 모델을 어떻게 쓰는지는 20장에서 설명합니다.</div>
 <div class="box prod"><b class="t">실무에서는: Redis 자체를 이중화</b>
@@ -2296,18 +2309,21 @@ DynamoDB는 "접근 패턴을 먼저 정하고 키를 설계"합니다(Single Ta
 <tr><td><b>주간 정산 집계</b>: 지난주 월~일 구매확정분 → 스토어별 정산서</td><td>settlement</td><td>매주 월 03:00</td><td><span class="tag must">Must</span> 관리자 "지금 집계" 버튼(API)도 반드시 같이</td></tr>
 <tr><td><b>결제 대기 만료</b>: <code>PENDING</code> 15분 경과 주문 → payment <code>/internal</code>로 포트원 결제 상태 조회 → 결제됐으면 확정, 아니면 보상(결제 취소, 재고 해제, 사용 포인트 환원 → <code>FAILED</code>)</td><td>order (→ payment, product, user)</td><td>20초 간격(11/5, 끝난 뒤부터 셈 — 분당 약 150건 계산값), 기준 15분</td><td><span class="tag must">Must</span> 재고, 포인트가 "결제 안 한 주문"에 묶이지 않게</td></tr>
 <tr><td>멈춘 Saga 복구: 일정 시간 진행 없는 <code>saga_instance</code> → 다음 단계 재시도 또는 보상</td><td>order</td><td>1분</td><td><span class="tag must">Must</span> 06장</td></tr>
-<tr><td>보완요청 7일 경과 → 자동 반려</td><td>store</td><td>매일</td><td><span class="tag should">Should</span></td></tr>
+<tr><td>보완요청 7일 경과 → 자동 반려</td><td>store</td><td>10분</td><td><span class="tag should">Should</span></td></tr>
+<tr><td>이용정지 기간 만료 → 자동 해제</td><td>user</td><td>1분</td><td>구현 — 영구 정지는 대상 아님</td></tr>
+<tr><td>결과를 모르는 결제 취소 복구: 확정 안 된 취소를 포트원 조회로 마무리, 거절된 자동 환불 재시도</td><td>payment</td><td>1분 (60초 지난 PENDING, 최대 10회)</td><td>구현 — 한도를 넘으면 ERROR 로그 + 지표</td></tr>
+<tr><td>채팅 메시지 90일 보관 후 삭제</td><td>chat</td><td>매일 09:10</td><td>구현 — 한 번에 1,000건씩, 하루 최대 5만 건</td></tr>
 <tr><td>Outbox 발행기 (실패분 재발행)</td><td>order, store, settlement</td><td>30초 (10초 지난 NEW, 최대 10회)</td><td>구현 — 정상 경로는 커밋 직후 바로 발행</td></tr>
 <tr><td>1년 미접속 휴면, 클레임 3영업일 직권처리</td><td>—</td><td>—</td><td><span class="tag wont">Won't</span> 범위 밖</td></tr>
 </table></div>
 <p><b>회원등급은 스케줄러를 쓰지 않습니다.</b> user가 <code>OrderItemConfirmed</code>를 받을 때마다 누적 구매확정 금액을 더하고 기준을 넘으면 등급을 올립니다(이벤트 기반, Should). 정산 <b>지급</b>도 스케줄러가 아니라 관리자가 "지급 실행"을 누르는 수동 작업입니다(목업 화면과 같음).</p>
 <div class="box warn"><b class="t">스케줄러 함정 2가지</b>
 <ol>
-<li><b>레플리카가 2개면 <code>@Scheduled</code>가 2번 실행됩니다.</b> 정산이 두 번 집계되는 사고가 납니다. <b>ShedLock</b>(각 서비스 DB의 <code>shedlock</code> 테이블)을 쓰고, 집계 자체도 "주차, 스토어 UNIQUE 키 + INSERT 실패 시 건너뜀"으로 멱등하게 만드세요. Boot 4 / Spring 7과 호환되는 ShedLock 버전을 확인하세요.</li>
+<li><b>레플리카가 2개면 <code>@Scheduled</code>가 2번 실행됩니다.</b> 정산이 두 번 집계되는 사고가 납니다. <b>ShedLock</b>(각 서비스 MySQL DB의 <code>shedlock</code> 테이블, <code>shedlock-provider-jdbc-template</code> — Redis 아님)을 쓰고, 집계 자체도 "주차, 스토어 UNIQUE 키 + INSERT 실패 시 건너뜀"으로 멱등하게 만드세요. Boot 4 / Spring 7과 호환되는 ShedLock 버전을 확인하세요.</li>
 <li><b>데모 때 7일을 기다릴 수 없습니다.</b> cron과 기준 기간을 설정값으로 빼서(<code>app.order.auto-confirm-after: 7d</code> → dev 클러스터 ConfigMap <code>1h</code>, 11/3 2m → 1h) ConfigMap으로 바꿀 수 있게 하고, 관리자용 "지금 실행" API를 둡니다. 시간대는 <code>@Scheduled(cron = "...", zone = "Asia/Seoul")</code>로 명시합니다.</li>
 </ol></div>
 <div class="box prod"><b class="t">대안 비교</b>
-쿠버네티스 <b>CronJob</b>(작업마다 파드를 새로 띄움, 중복 실행 걱정 없음, JVM 기동 비용), <b>EventBridge Scheduler → Lambda/SQS</b>(서버리스, 클러스터 밖). 이 프로젝트는 서비스 코드 안에서 끝나는 <code>@Scheduled</code> + ShedLock이 가장 단순합니다. 서비스 데이터와 무관한 배치(로그 아카이브 — 11/10 범위 제외, 틀만)만 EventBridge를 씁니다(11장).</div>
+쿠버네티스 <b>CronJob</b>(작업마다 파드를 새로 띄움, 중복 실행 걱정 없음, JVM 기동 비용), <b>EventBridge Scheduler → Lambda/SQS</b>(서버리스, 클러스터 밖). 이 프로젝트는 서비스 코드 안에서 끝나는 <code>@Scheduled</code> + ShedLock이 가장 단순합니다. 서비스 데이터와 무관한 배치(로그 아카이브 — 11/10 범위 제외, 틀만)와 클러스터 생성, 삭제 신호(<code>infra-dispatch</code> — 11/17부터 꺼짐)만 EventBridge 스케줄을 씁니다(11장).</div>
 </section>
 
 <!-- ============================================================ 09 -->
@@ -2320,13 +2336,14 @@ DynamoDB는 "접근 패턴을 먼저 정하고 키를 설계"합니다(Single Ta
 <tr><td><code>settlement-report</code></td><td>SQS (<code>report-settlement-events</code>, SettlementPaid)</td><td>정산 명세서 CSV → S3 <code>sesac-gojigi-reports-{계정4}</code> → SES 메일(판매자 정산 화면 링크, 다운로드는 화면에서 10분 presigned) + DynamoDB <code>settlement-reports</code></td><td>구지훈</td><td><span class="tag should">Should</span></td></tr>
 <tr><td><code>log-archive</code></td><td>EventBridge 매일 03:00 (KST)</td><td>CloudWatch Logs(Lambda 로그) → S3 <code>sesac-gojigi-log-archive-{계정4}</code> 내보내기, 수명주기 90일 후 Glacier. <b>범위 제외(11/10)</b> — 함수 틀만 두고(트리거, 권한, 버킷은 있음) 내보내기 코드는 구현하지 않음. 발표 뒤 AWS 를 삭제해 장기 보관이 필요 없고, 최근 14일 로그는 CloudWatch, Grafana 「Lambda, DLQ」로 봄</td><td>박지연</td><td><span class="tag wont">제외</span></td></tr>
 <tr><td><code>upload-guard</code> (10/27)</td><td>EventBridge — S3 images, seller-docs "Object Created"</td><td>앞 16바이트(매직 바이트)로 실제 형식 확인 — images: <code>products/</code>, <code>reviews/</code>, <code>stores/</code> 의 jpg, png, webp / seller-docs: <code>applications/</code> 의 pdf, jpg, png. 경로, 확장자, 내용이 맞지 않거나 빈 파일이면 삭제 + SNS <code>sesac-gojigi-alerts</code> 메일 (SYS-24 — presigned PUT 은 서버가 내용을 보지 않으므로)</td><td>구지훈</td><td><span class="tag could">Could</span></td></tr>
+<tr><td><code>infra-dispatch</code> (10/26)</td><td>EventBridge Scheduler 매일 08:00, 22:00 (Asia/Seoul)</td><td>GitHub <code>infra-schedule</code> 워크플로를 <code>workflow_dispatch</code>로 실행(apply, destroy). 사용자 기능이 아니라 인프라 자동화라 Serverless Framework 가 아니라 Terraform <code>app/scheduler.tf</code>로 관리. <b>11/17부터 24시간 운영으로 두 스케줄 모두 DISABLED</b>(함수는 남아 있음, 12장)</td><td>구지훈</td><td>구현 (꺼짐)</td></tr>
 </table></div>
 <p>상품 이미지 썸네일 Lambda는 만들지 않습니다. 이미지는 원본만 S3에 올리고, "원본 / 리사이즈 분리" 구조는 아키텍처 문서에만 그립니다(02장, 20장). 고객센터(FAQ, 상품문의)도 서버리스가 아니라 프론트 정적 데이터와 review-service에 둡니다(03장).</p>
 
 <h3>구축 방법</h3>
 <div class="tbl"><table>
 <tr><th>누가, 무엇으로</th><th>관리 대상</th></tr>
-<tr><td>구지훈, Terraform (<code>infra/terraform/app</code>)</td><td>공유 자원: S3 버킷(reports, log-archive, 수명주기, 버킷 정책), SNS 토픽, SQS 큐, DLQ, DynamoDB, SES 자격 증명. 만든 ARN, 이름을 <b>SSM Parameter Store</b>에 기록 (<code>/sesac-gojigi/dev/sqs/notification-order-queue-arn</code> 등)</td></tr>
+<tr><td>구지훈, Terraform (<code>infra/terraform/app</code>)</td><td>공유 자원: S3 버킷(reports, log-archive, 수명주기, 버킷 정책), SNS 토픽, SQS 큐, DLQ, DynamoDB, SES 자격 증명, <code>infra-dispatch</code> Lambda 와 스케줄. 만든 ARN, 이름을 <b>SSM Parameter Store</b>에 기록 (<code>/sesac-gojigi/dev/sqs/notification-order-queue-arn</code> 등)</td></tr>
 <tr><td>함수 담당, Serverless Framework (<code>serverless/{함수}/serverless.yml</code>)</td><td>Lambda 코드, 함수별 IAM 권한, 트리거 연결. SSM에서 ARN을 읽어 씀. <code>order-notification</code>, <code>settlement-report</code>, <code>upload-guard</code> = 구지훈, <code>log-archive</code> = 박지연</td></tr>
 <tr><td>이경석, GitHub Actions</td><td><code>serverless/**</code> 변경 시 바뀐 함수만 <code>serverless deploy --stage dev</code> (OIDC 역할)</td></tr>
 </table></div>
@@ -2367,7 +2384,7 @@ functions:
           arn: ${ssm:/sesac-gojigi/dev/sqs/notification-store-queue-arn}
           batchSize: 5
           functionResponseType: ReportBatchItemFailures</code></pre>
-<p class="cap">serverless/order-notification/src/notify.js</p>
+<p class="cap">serverless/order-notification/src/notify.js (설계 당시 예시 — 실제 코드는 조회 대신 조건부 Put 으로 선점 → 발송 → Update, SES 거절 주소는 <code>REJECTED</code>)</p>
 <pre><code>import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";

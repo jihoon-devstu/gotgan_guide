@@ -1065,14 +1065,18 @@ spring:
 spring:
   config:
     activate:
-      on-profile: local,dev
+      on-profile: local,k8s
   flyway:
-    locations: classpath:db/migration,classpath:db/seed   # 시연용 시드는 local/dev에서만</code></pre>
-<pre><code>src/main/resources/db/
+    locations: classpath:db/migration,classpath:db/seed   # 시연용 시드는 local, k8s(dev 클러스터)에서만</code></pre>
+<pre><code>src/main/resources/db/                # order-service 실제 파일
 ├─ migration/
-│  ├─ V1__init.sql                    # 최초 테이블 (아래 orderdb 예시가 이 파일)
-│  ├─ V2__add_order_item_tracking.sql
-│  └─ V3__add_saga_instance.sql
+│  ├─ V1__init.sql                    # shedlock, cart_item
+│  ├─ V2__order_saga_outbox.sql       # 아래 orderdb 예시 (주문, 상품주문, 클레임, Saga, Outbox)
+│  ├─ V3__saga_retry.sql              # Saga 재시도 attempt_count, next_retry_at (10/21)
+│  ├─ V4__order_item_ordered.sql      # 상품주문 초기 상태 ORDERED (10/23)
+│  ├─ V5__order_claim_restore_point.sql
+│  ├─ V6__outbox_attempts.sql
+│  └─ V7__order_no_sequence.sql       # 날짜별 주문번호 채번 (11/5)
 └─ seed/
    └─ R__demo_seed.sql                # R__ = 반복 실행(내용이 바뀌면 다시 실행). 목업 데이터 변환</code></pre>
 <div class="box warn"><b class="t">Flyway 규칙 4가지</b>
@@ -1196,7 +1200,7 @@ CREATE TABLE order_claim (
   INDEX idx_order_claim_status_requested (status, requested_at)             -- 판매자 클레임 처리 대기 목록
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='취소, 반품, 교환 요청';
 
--- Saga 진행 상태 (오케스트레이터의 기억)
+-- Saga 진행 상태 (오케스트레이터의 기억). 아래는 V2 모양 — V3(10/21)에서 attempt_count, next_retry_at 추가, current_step 에 취소, 반품 단계(PAYMENT_CANCEL_REQUESTED / PAYMENT_CANCELLED / STOCK_RESTORED / POINT_RESTORED) 추가
 CREATE TABLE saga_instance (
   saga_instance_id BIGINT       NOT NULL AUTO_INCREMENT,
   order_id         BIGINT       NOT NULL,
@@ -1359,9 +1363,10 @@ public class PlaceOrderSaga {
             orderTx.markFailed(order.getId(), cause.getMessage());
             sagaStore.compensated(saga);
         } catch (BusinessException again) {
-            // 보상도 실패(상대 서비스 장애 등) → FAILED 로 남기고 SagaRecoveryScheduler가 다시 시도
+            // 보상도 실패(상대 서비스 장애 등) → COMPENSATING 그대로 next_retry_at 예약, SagaRecoveryScheduler가 같은 sagaId 로 다시 시도
+            // 간격 1, 1, 2분 후 5분, 최대 8회(약 30분). 넘으면 FAILED + saga_failed_total (사람이 확인)
             log.error("Saga 보상 실패 - sagaId={}, orderNo={}", saga.getSagaId(), order.getOrderNo(), again);
-            sagaStore.fail(saga, again.getMessage());
+            sagaStore.scheduleRetry(saga, again.getMessage());
         }
     }
 }</code></pre>
@@ -1460,7 +1465,8 @@ class SagaRecoveryScheduler {
     private final SagaStore sagaStore;
     private final PlaceOrderResolver resolver;
 
-    // 파드가 Saga 도중 죽어 STARTED/COMPENSATING 으로 남았거나, 보상이 FAILED 로 끝난 경우 → 보상 재시도
+    // 파드가 결제 준비 전 단계에서 죽어 STARTED 로 5분 넘게 남았거나, 보상 재시도 시각(next_retry_at)이 된 COMPENSATING → 보상 재시도
+    // 취소, 반품 Saga(PAYMENT_CANCEL_PENDING 409, 장애)도 같은 기준으로 멈춘 단계부터 다시 진행
     @Scheduled(fixedDelayString = "${app.scheduler.saga-recovery.interval:60s}")
     @SchedulerLock(name = "saga-recovery", lockAtMostFor = "5m")
     void recoverStuckSagas() {
@@ -1475,7 +1481,7 @@ class SagaRecoveryScheduler {
 <tr><td>타임아웃</td><td>연결 2초, 읽기 3초 (<code>common/config/RestClientConfig</code>)</td><td>죽은 서비스를 무한정 기다리지 않음</td></tr>
 <tr><td>서킷 브레이커</td><td><b>client(대상 서비스)마다 인스턴스 하나</b>, 이름 = 대상 서비스 (<code>product</code>, <code>user</code>, <code>payment</code>, <code>order</code> …)</td><td>product가 죽어도 user 호출은 영향 없음. OPEN이면 즉시 실패(fail-fast)</td></tr>
 <tr><td>재시도</td><td><b>멱등 GET만</b>, 최대 2회. POST, PATCH, DELETE는 재시도하지 않음</td><td>Saga 쓰기는 멱등 키 + 보상으로 처리. 쓰기 재시도는 이중 차감 위험</td></tr>
-<tr><td>폴백</td><td>Saga, 단건 호출: <code>EXTERNAL_API_ERROR</code>(502/504) → Saga 보상 / 대시보드 조합: 그 영역만 <code>null</code> + <code>unavailable: [...]</code> 부분 응답(200)</td><td>사용자는 "○○ 서비스 일시 장애" 메시지를 받고, 다른 영역은 정상 표시</td></tr>
+<tr><td>폴백</td><td>Saga, 단건 호출: <code>EXTERNAL_API_ERROR</code>(502) → Saga 보상 / 대시보드 조합: 그 영역만 <code>null</code> + <code>unavailable: [...]</code> 부분 응답(200)</td><td>사용자는 "재고 예약에 실패했습니다"처럼 그 작업의 실패 메시지를 받고(서비스 이름은 로그에만), 다른 영역은 정상 표시</td></tr>
 <tr><td>비즈니스 오류</td><td>상대가 보낸 409(재고 부족 등)는 <b>서킷 실패로 세지 않음</b>(ignore) → 내 도메인 코드로 변환</td><td>재고 부족이 많다고 product 서킷이 열리면 안 됨</td></tr>
 </table></div>
 <p class="cap">application.yml (서비스 템플릿 공통 — 값 임의 변경 금지, 컨벤션 2-7)</p>
@@ -1510,6 +1516,8 @@ class SagaRecoveryScheduler {
           - org.springframework.web.client.ResourceAccessException
           - org.springframework.web.client.HttpServerErrorException
     instances:
+      user:    { base-config: default }
+      store:   { base-config: default }
       product: { base-config: default }
 
 management:
@@ -1541,9 +1549,9 @@ public class ProductClientAdapter {
 
     // 읽기: 멱등 GET이라 재시도 + 서킷 브레이커
     @Retry(name = "product")
-    @CircuitBreaker(name = "product", fallbackMethod = "getStocksFallback")
-    public List&lt;StockResponse&gt; getStocks(List&lt;Long&gt; productOptionIds) {
-        return productClient.getStocks(productOptionIds);
+    @CircuitBreaker(name = "product", fallbackMethod = "getOptionsFallback")
+    public List&lt;ProductOptionResponse&gt; getOptions(List&lt;Long&gt; productOptionIds) {
+        return productClient.getOptions(productOptionIds).data();
     }
 
     // 폴백: 원래 메서드와 같은 파라미터 + 마지막에 예외. 연결 실패, 타임아웃, 5xx, 서킷 OPEN(CallNotPermittedException)
@@ -1556,7 +1564,7 @@ public class ProductClientAdapter {
         throw toExternalError(t);
     }
 
-    private List&lt;StockResponse&gt; getStocksFallback(List&lt;Long&gt; productOptionIds, Throwable t) {
+    private List&lt;ProductOptionResponse&gt; getOptionsFallback(List&lt;Long&gt; productOptionIds, Throwable t) {
         throw toExternalError(t);
     }
 
@@ -1565,15 +1573,15 @@ public class ProductClientAdapter {
             return be;
         }
         log.warn("product-service 호출 실패 - cause={}", t.toString());
-        return new BusinessException(CommonErrorCode.EXTERNAL_API_ERROR);   // 502/504 → Saga 보상
+        return new BusinessException(CommonErrorCode.EXTERNAL_API_ERROR);   // 502 → Saga 보상
     }
 }</code></pre>
 <p>대시보드 조합(store <code>dashboard</code>, admin <code>dashboard</code>)은 같은 서킷 브레이커를 쓰되, 폴백이 예외 대신 <code>null</code>을 돌려주고 조합기가 그 영역 이름을 <code>unavailable</code>에 넣습니다. 각 서비스 <code>/internal/stats/**</code> 호출은 병렬로, 한 영역이 느려도 전체 응답이 3초를 넘지 않게 합니다.</p>
 <div class="tbl"><table>
 <tr><th>시연 장면 (13장)</th><th>Resilience4j가 하는 일</th><th>화면</th></tr>
 <tr><td>order-service 레플리카 0개</td><td>store <code>dashboard</code>의 <code>order</code> 서킷 → 폴백 <code>null</code></td><td>판매자 대시보드: 주문 카드만 "일시적으로 불러올 수 없습니다", 상품, 정산 카드 정상 / 상품 목록, 상세, 리뷰는 영향 없음</td></tr>
-<tr><td>product-service 레플리카 0개 상태에서 주문</td><td>order의 <code>product</code> 서킷 → <code>EXTERNAL_API_ERROR</code> → Saga 보상(포인트 환원, 주문 FAILED)</td><td>"상품 서비스 일시 장애로 주문하지 못했습니다" — 몇 번 실패 뒤엔 3초 대기 없이 즉시</td></tr>
-<tr><td>payment-service 레플리카 0개 상태에서 주문</td><td>order의 <code>payment</code> 서킷 → 결제 준비 실패 → 재고 해제, 포인트 환원</td><td>결제창이 뜨지 않고 오류 메시지. 쓴 포인트, 재고는 원래대로</td></tr>
+<tr><td>product-service 레플리카 0개 상태에서 주문</td><td>order의 <code>product</code> 서킷 → 상품 옵션 조회에서 <code>EXTERNAL_API_ERROR</code>(주문, Saga 생성 전이라 되돌릴 것 없음)</td><td>장바구니부터 "불러오지 못했어요", 상품 목록, 상세도 안내 문구(11/6 QA) — 몇 번 실패 뒤엔 3초 대기 없이 즉시</td></tr>
+<tr><td>payment-service 레플리카 0개 상태에서 주문</td><td>order의 <code>payment</code> 서킷 → 결제 준비 실패 → 주문 FAILED, 보상(결제 취소 → 재고 해제 → 포인트 환원)은 payment가 돌아온 뒤 복구 스케줄러가 마무리</td><td>결제창이 뜨지 않고 오류 메시지. 쓴 포인트, 재고는 payment 복구 뒤 원래대로(11/6 QA: 보상 37초 뒤 COMPENSATED)</td></tr>
 <tr><td>서비스 복구(파드 재기동)</td><td>10초 뒤 HALF_OPEN → 시험 호출 성공 → CLOSED</td><td>사람 개입 없이 정상화. Grafana에 서킷 상태 변화가 보임</td></tr>
 </table></div>
 <div class="box warn"><b class="t">Boot 4 호환 확인</b>
@@ -1589,7 +1597,8 @@ Resilience4j의 Spring Boot 스타터는 Boot 버전별 아티팩트(<code>resil
 <li>보상 실패 시 상태가 남고 복구 스케줄러가 다시 시도하는가? 결제 대기 만료도 처리하는가?</li>
 <li>Grafana에서 <code>saga_compensated_total</code>, 서킷 상태(<code>resilience4j_circuitbreaker_state</code>) 같은 지표로 실패를 볼 수 있는가? (13장)</li>
 </ul></div>
-<p>시연(13장): ① product-service 파드를 0개로 줄이고 주문 → "상품 서비스 일시 장애" + 주문 FAILED + 쓴 포인트 환원, 판매자 대시보드는 나머지 카드 정상. ② 브라우저 개발자 도구로 결제 금액을 100원으로 바꿔 결제 → payment 검증에서 금액 불일치 → <b>포트원 자동 취소 + 재고 해제 + 포인트 환원</b>. ③ 결제 직후 탭을 닫음 → 결제 대기 만료 스케줄러(데모는 1분)가 payment 상태(웹훅으로 이미 PAID)를 보고 주문을 PAID로 마무리. 이 장면들이 장애 격리, 자동 복구를 보여 주는 발표의 하이라이트입니다.</p>
+<p>시연(13장): ① payment-service 파드를 0개로 줄이고 주문 → 결제창 대신 오류 메시지 + 주문 FAILED, payment 복구 뒤 쓴 포인트, 재고 자동 환원. ② 브라우저 개발자 도구로 결제 금액을 100원으로 바꿔 결제 → payment 검증에서 금액 불일치 → <b>포트원 자동 취소 + 재고 해제 + 포인트 환원</b>. ③ 결제 직후 탭을 닫음 → 결제 대기 만료 스케줄러(15분, 20초 주기)가 payment 상태(웹훅으로 이미 PAID)를 보고 주문을 PAID로 마무리. 이 장면들이 장애 격리, 자동 복구를 보여 주는 발표의 하이라이트입니다.<br>
+실제 검증(11/10, 관리자 <code>/admin/system</code>): review 서비스를 내려도 상품 상세, 「바로 구매」, 장바구니, 주문서는 정상이고 리뷰 영역만 안내 문구, 복구 26초. 구매 경로 5개 서비스(order, product, payment, store, user) 파드를 하나씩 내린 동안 1초 간격 조회 실패 0 / 90회, 재시작 0회.</p>
 </section>
 
 <!-- ============================================================ 07 결제 -->
@@ -1600,7 +1609,7 @@ Resilience4j의 Spring Boot 스타터는 Boot 버전별 아티팩트(<code>resil
 <h3>테스트용 개발 인프라 준비 (1회, 구지훈)</h3>
 <ol>
 <li>포트원 관리자 콘솔에 <b>팀 공용 계정</b>으로 가입(구지훈이 만들고 팀원 초대)</li>
-<li>결제 연동 → 채널 관리 → <b>테스트 채널 추가</b>(콘솔에서 고를 수 있는 테스트 PG 중 하나, 예: 카드 결제 테스트) → 채널 키 발급</li>
+<li>결제 연동 → 채널 관리 → <b>테스트 채널 추가</b>(토스페이먼츠 V2 테스트 채널, 카드, 간편결제) → 채널 키 발급</li>
 <li><b>V2 API Secret</b> 발급 → 서버 전용 비밀 값</li>
 <li><b>웹훅</b> 주소 등록: <code>https://gotgan-ashy.vercel.app/api/payments/webhook</code>(05장 rewrite 경유 → 게이트웨이 → payment-service) → 웹훅 시크릿 발급</li>
 <li>구지훈이 API Secret, 웹훅 시크릿을 GitHub Secrets(<code>PORTONE_API_SECRET</code>, <code>PORTONE_WEBHOOK_SECRET</code>, gotgan-config)에 등록 → <code>secrets-sync</code>가 <code>payment-service-secret</code>으로 만들어 파드 환경 변수로 주입(12장)</li>
@@ -1626,7 +1635,7 @@ Resilience4j의 Spring Boot 스타터는 Boot 버전별 아티팩트(<code>resil
 <tr><td>6</td><td>포트원 → <code>POST /api/payments/webhook</code> → <b>payment-service</b></td><td>게이트웨이 permitAll, payment가 <b>웹훅 서명 검증</b>. 웹훅 본문은 "확인 요청"으로만 보고 5번과 같은 포트원 조회, 비교를 한 번 더. <code>portone_payment_id</code> 기준 멱등(이미 PAID면 그대로)</td></tr>
 <tr><td>7</td><td>15분 지나도 결제 대기 → order의 결제 대기 만료 스케줄러</td><td>payment <code>GET /internal/payments?orderNo=</code>로 상태 조회 → PAID(웹훅이 반영)면 주문 PAID로 마무리, 아니면 보상(06장 ④)</td></tr>
 </table></div>
-<p class="cap">frontend — features/order/api/checkout.js</p>
+<p class="cap">frontend — features/payment/payOrder.js, portone.js (요약)</p>
 <pre><code>import * as PortOne from "@portone/browser-sdk/v2";
 
 export async function pay(form) {
@@ -1638,8 +1647,8 @@ export async function pay(form) {
     paymentId: portonePaymentId,     // 서버(payment-service)가 만든 ID
     orderName,                       // 예: "리넨 셔츠 외 2건"
     totalAmount: payAmt,             // 서버가 계산한 실결제금액 (포인트 사용분 제외)
-    currency: "CURRENCY_KRW",        // SDK 버전에 따라 "KRW" 표기도 있으니 공식 문서 확인
-    payMethod: "CARD",
+    currency: "KRW",
+    payMethod: "CARD",               // 기본 카드, 간편결제(카카오페이, 네이버페이, 토스페이)는 EASY_PAY + easyPay.easyPayProvider
     redirectUrl: `${location.origin}/order/complete?orderNo=${orderNo}`,   // 모바일 결제창(리다이렉트 방식) 대비
   });
 
@@ -1699,7 +1708,7 @@ public interface PortOneClient {
 
     @PostExchange("/{paymentId}/cancel")
     PortOneCancelResponse cancel(@PathVariable String paymentId,
-                                 @RequestBody PortOneCancelRequest body); // {"reason": "...", "amount": 부분 취소 시}
+                                 @RequestBody PortOneCancelRequest body); // {"reason": "...", "amount": 부분 취소 시, "currentCancellableAmount": 선기록한 직전 잔액}
 }
 
 // common/config/RestClientConfig.java — 포트원도 타임아웃(2s, 3s) + 서킷 브레이커 "portone"
@@ -1713,14 +1722,15 @@ PortOneClient portOneClient(RestClient.Builder builder, @Value("${PORTONE_API_SE
     return HttpServiceProxyFactory.builderFor(RestClientAdapter.create(client)).build()
             .createClient(PortOneClient.class);
 }</code></pre>
-<p class="cap">payment-service payment/service/PaymentVerifyService.java — 검증, 자동 취소 (원격 호출은 트랜잭션 밖)</p>
+<p class="cap">payment-service payment/service/PaymentService.java — 검증, 자동 취소 (원격 호출은 트랜잭션 밖, 요약)</p>
 <pre><code>@Slf4j
 @Service
 @RequiredArgsConstructor
-public class PaymentVerifyService {
+public class PaymentService {
 
     private final PaymentTxService paymentTx;          // @Transactional 짧은 쓰기 모음
     private final PortOneClientAdapter portOne;        // PortOneClient + Resilience4j("portone")
+    private final PaymentCancelExecutor cancelExecutor;   // 포트원 취소 실행, 결과 확정 (선기록 행 기준)
 
     // /internal/payments/verify (order가 호출) — orderNo 멱등. 웹훅은 expectedAmount 없이 payment.amount 와만 비교하는 같은 로직(reconcile)
     public PaymentResponse verify(String orderNo, long expectedAmount) {
@@ -1734,8 +1744,9 @@ public class PaymentVerifyService {
         }
         if (p.totalAmount() != payment.getAmount() || payment.getAmount() != expectedAmount) {
             log.warn("결제 금액 불일치 - orderNo={}, expected={}, actual={}", orderNo, payment.getAmount(), p.totalAmount());
-            portOne.cancel(payment.getPortonePaymentId(), PortOneCancelRequest.full("결제 금액 불일치 자동 취소"));
-            paymentTx.markFailedByMismatch(payment.getId());   // FAILED + payment_cancel(사유: 결제 금액 불일치 자동 취소)
+            Begun begun = paymentTx.beginRefund(payment.getId(), null, p.cancellableAmount(), "결제 금액 불일치 자동 취소");
+                                                       // FAILED 확정 + payment_cancel PENDING 선기록을 한 트랜잭션에
+            cancelExecutor.execute(begun.cancel());   // 포트원 전액 취소 → SUCCEEDED. 끊기면 복구 스케줄러가 마무리
             throw new PaymentException(PaymentErrorCode.PAYMENT_AMOUNT_MISMATCH);   // 409 → order가 보상
         }
         return PaymentResponse.from(paymentTx.markPaid(payment.getId(), p));       // PAID, pg_tx_id, method, paid_at
@@ -1743,7 +1754,7 @@ public class PaymentVerifyService {
 }</code></pre>
 <div class="grid2">
 <div class="card"><h4>결제 후 취소, 반품 (부분 취소)</h4>
-<p>구매자가 결제완료 단계 상품주문을 취소(또는 반품 승인) → order-service가 payment <code>POST /internal/payments/{orderNo}/cancel</code>(sagaId, orderItemId, 금액 = 그 상품주문의 실결제 배분액) → payment가 <code>payment_cancel</code>을 PENDING 으로 먼저 기록한 뒤 포트원 <b>부분 취소</b> → SUCCEEDED 확정(응답이 끊기면 복구 스케줄러가 포트원 조회로 대조) → 성공하면 order가 재고 복원, 포인트 환원/회수 → 상품주문 CANCELLED / RETURNED + 이벤트. 포트원 취소가 실패하면 재고, 포인트를 되돌리지 않고 요청 상태로 남겨 복구 스케줄러가 재시도합니다(06장).</p></div>
+<p>구매자가 결제완료 단계 상품주문을 취소(또는 반품 승인) → order-service가 payment <code>POST /internal/payments/{orderNo}/cancel</code>(sagaId, orderItemId, 금액 = 그 상품주문의 실결제 배분액) → payment가 <code>payment_cancel</code>을 PENDING 으로 먼저 기록한 뒤 포트원 <b>부분 취소</b> → SUCCEEDED 확정(응답이 끊기면 payment 복구 스케줄러가 1분마다, 60초 넘게 확정되지 않은 PENDING 을 포트원 조회로 대조) → 성공하면 order가 재고 복원, 포인트 환원/회수 → 상품주문 CANCELLED / RETURNED + 이벤트. 포트원 취소가 실패하면 재고, 포인트를 되돌리지 않고 요청 상태로 남겨 복구 스케줄러가 재시도합니다(06장).</p></div>
 <div class="card"><h4>게이트웨이, 보안 설정</h4>
 <ul>
 <li><code>/api/payments/webhook</code>은 토큰이 없으므로 게이트웨이에서 <code>permitAll</code>, 대신 payment-service가 <b>웹훅 서명</b>을 검증(실패하면 400, 처리 안 함). 포트원 V2 웹훅은 Standard Webhooks 형식(<code>webhook-id</code>, <code>webhook-timestamp</code>, <code>webhook-signature</code> 헤더, HMAC-SHA256) — 구현 시 포트원 V2 문서로 재확인</li>

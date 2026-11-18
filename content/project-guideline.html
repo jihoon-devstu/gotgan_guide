@@ -620,12 +620,12 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 </ul></div>
 
 <h3>파드 예산으로 노드 크기 정하기</h3>
-<p>학습 가이드의 t3.medium × 2는 서비스 3개 기준으로도 "파드 31/34, 여유 3개"였습니다. 업무 서비스 9개(10/27 chat 포함) + 게이트웨이 + Keycloak + 헬스 체크용 메트릭까지 올리면 아래와 같습니다. 11/16까지는 오토스케일링(HPA) 없이 레플리카를 고정했습니다 — 11/5부터 구매 경로(user, store, product, order, payment)는 2개, 나머지는 1개. 11/17부터 gateway, user, store, product, order 5개는 HPA가 2개에서 4개 사이로 조정하므로(payment는 2개 고정) 아래 표는 HPA 최소값 기준입니다. 5개가 전부 최대로 늘어도 노드 2대 requests 합은 CPU 약 75%, 메모리 약 60%라 지금 노드 안에 들어갑니다(config #113). 10/13 3차 결정으로 MySQL, Redis는 별도 <code>db</code> 노드로 분리했으므로 예산도 노드 그룹별로 나눕니다.</p>
+<p>학습 가이드의 t3.medium × 2는 서비스 3개 기준으로도 "파드 31/34, 여유 3개"였습니다. 업무 서비스 9개(10/27 chat 포함) + 게이트웨이 + Keycloak + 헬스 체크용 메트릭까지 올리면 아래와 같습니다. 11/16까지는 오토스케일링(HPA) 없이 레플리카를 고정했습니다 — 11/5부터 구매 경로(user, store, product, order, payment — payment는 10/21부터)는 2개, 나머지는 1개. 11/17부터 gateway, user, store, product, order 5개는 HPA가 2개에서 4개 사이로 조정하므로(payment는 2개 고정) 아래 표는 HPA 최소값 기준입니다. 5개가 전부 최대로 늘어도 노드 2대 requests 합은 CPU 약 75%, 메모리 약 60%라 지금 노드 안에 들어갑니다(config #113). 10/13 3차 결정으로 MySQL, Redis는 별도 <code>db</code> 노드로 분리했으므로 예산도 노드 그룹별로 나눕니다.</p>
 <p class="cap"><code>app</code> 노드 그룹(t3.xlarge × 2) — 백 티어 파드 예산</p>
 <div class="tbl"><table>
 <tr><th>항목</th><th>파드 수</th><th>메모리 requests</th><th>비고</th></tr>
 <tr><td>gateway × 2</td><td>2</td><td>512Mi × 2 = 1Gi</td><td>항상 2개 (한 개가 죽어도 진입점 유지)</td></tr>
-<tr><td>업무 서비스 9개 (구매 경로 5개 × 2 + 나머지 4개 × 1)</td><td>14</td><td>512Mi × 14 = 7Gi</td><td>× 2: user, store, product, order, payment(11/5) / × 1: review, settlement, admin, chat(10/27 추가)</td></tr>
+<tr><td>업무 서비스 9개 (구매 경로 5개 × 2 + 나머지 4개 × 1)</td><td>14</td><td>512Mi × 14 = 7Gi</td><td>× 2: user, store, product, order(11/5), payment(10/21) / × 1: review, settlement, admin, chat(10/27 추가)</td></tr>
 <tr><td>Keycloak</td><td>1</td><td>1Gi</td><td>클러스터 내부 전용, DB는 db 노드의 MySQL keycloakdb</td></tr>
 <tr><td>관측성 (Prometheus, Loki, Zipkin, Grafana, kube-state-metrics)</td><td>5</td><td>약 1.4Gi</td><td>kube-state-metrics는 헬스 체크 대시보드에 필수(13장). blackbox exporter는 쓰지 않음(10/13 3차)</td></tr>
 <tr><td>ArgoCD</td><td>7</td><td>0 (requests 없음)</td><td>공식 install.yaml 그대로(v3.5.3) — dex, notifications 포함 7개, requests 를 두지 않음. 실사용 약 1Gi</td></tr>
@@ -676,7 +676,7 @@ DB를 공유하거나, 서로의 API를 촘촘히 호출해야 해서 "배포는
 <li>매일 08:00 클러스터 생성 직후 <b>JVM 11개가 동시에 기동</b>합니다. t3는 버스트형이라 CPU 크레딧 소모가 큽니다 — t3.large × 2는 4 vCPU 합계, 기준 성능 30%, t3.xlarge × 2는 8 vCPU 합계, 기준 성능 40%.</li>
 <li><b>노드 1대 장애 시연(N-1)</b>: t3.large 1대(약 7.3Gi)로는 실사용 12~13Gi를 받을 수 없고, t3.xlarge 1대(약 15Gi)는 받을 수 있습니다.</li>
 <li>대안 t3.large × 3은 시간당 $0.312로 더 싸지만, 노드가 늘고 노드당 CPU, 메모리는 그대로라 버스트, N-1 여유가 작습니다 → <b>2대 구성은 유지하고 사양만 올립니다</b>. 비용은 6주 합계 약 $320 → 약 $440(아래 비용 표).</li>
-<li>멘토 피드백 "large도 크다"는 서비스 5개 기준이었습니다. 지금은 서비스 10개(10/27 chat 추가) + Keycloak이고, 위 실사용 산수가 근거입니다. 발표에서도 이 산수로 사양을 설명하고, 그 이상의 실무 규모 사양(노드 여러 대, 멀티 AZ DB, 오토스케일링)은 <b>구현 대신 설명으로 대체</b>합니다(20장).</li>
+<li>멘토 피드백 "large도 크다"는 서비스 5개 기준이었습니다. 지금은 서비스 10개(10/27 chat 추가) + Keycloak이고, 위 실사용 산수가 근거입니다. 발표에서도 이 산수로 사양을 설명하고, 그 이상의 실무 규모 사양(노드 여러 대, 멀티 AZ DB)은 <b>구현 대신 설명으로 대체</b>합니다(20장). 오토스케일링은 11/17 HPA와 Cluster Autoscaler로 넣었습니다(위 표).</li>
 <li>SonarQube는 <b>SonarQube Cloud</b>를 쓰므로 별도 EC2(서버 + PostgreSQL)가 필요 없습니다. 클러스터 예산에도 들어가지 않습니다.</li>
 </ul></div>
 
@@ -771,7 +771,7 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
   cluster_admin_arns = merge(
     { for u in var.team_iam_users : u =&gt; "arn:aws:iam::${local.account_id}:user/${u}" },  # sesac-a1 ~ a4 (variables.tf 기본값)
-    { for arn in data.aws_iam_roles.github_actions.arns : "github_actions" =&gt; arn }        # 역할이 있을 때만 (없으면 빈 map)
+    { for arn in data.aws_iam_roles.github_actions.arns : "github-actions" =&gt; arn }        # 역할이 있을 때만 (없으면 빈 map)
   )
 }
 
@@ -798,6 +798,8 @@ data "aws_iam_roles" "github_actions" {
 <li>DynamoDB 3개: <code>sesac-gojigi-notifications</code>, <code>sesac-gojigi-settlement-reports</code>, <code>sesac-gojigi-inbox</code>(10/27). inbox, settlement-reports 는 매일 08:00 apply 때 새로 만듭니다(11/6, 09장. 11/17부터는 수동 apply 때만)</li>
 <li>SES 이메일 자격 증명</li>
 <li>SSM 파라미터(서버리스가 읽을 ARN), 작업용 EC2 + SSM 인스턴스 프로파일(선택)</li>
+<li>클러스터 일일 스케줄: EventBridge Scheduler 2개 + Lambda <code>sesac-gojigi-infra-dispatch</code>(<code>scheduler.tf</code>, 10/26, 11/17부터 DISABLED)</li>
+<li>DLQ 알람(구독 큐마다) + SNS <code>sesac-gojigi-alerts</code> → 이메일, 이 토픽 암호화용 KMS 키 1개(<code>alarms.tf</code>, 10/20)</li>
 <li>서비스별 IRSA 역할은 여기 없음 → <code>cluster/irsa.tf</code>(위 "매일 다시 생긴다는 것의 뜻"). <code>app/</code>은 <code>cluster/</code>를 읽지 않습니다</li>
 </ul></td><td>상시</td><td>전원, EIP는 1주차, 나머지는 2주차 인수인계 전까지</td></tr>
 <tr><td><code>cluster/</code></td><td>EKS, 노드 그룹 2개(<code>app</code> t3.xlarge × 2, <code>db</code> t3.medium × 1, 라벨, 테인트), access entries(팀원 전원 + Actions 역할), IRSA 역할(<code>irsa.tf</code>), EBS CSI, LBC, metrics-server, Cluster Autoscaler(<code>cluster-autoscaler.tf</code>, 11/17), 클러스터 OIDC 공급자(IRSA용 — 매일 새 ARN)</td><td><b>매일 08:00 apply, 22:00 destroy</b>(11/16까지, 11/17부터 24시간 유지)</td><td>전원, 1주차 중</td></tr>
@@ -857,7 +859,7 @@ data "aws_iam_roles" "github_actions" {
 <b>Spot 인스턴스</b>(<code>capacity_type = "SPOT"</code>, <code>instance_types = ["t3.xlarge","t3a.xlarge","m5.xlarge"]</code>)는 60~70% 저렴하지만 2분 예고 후 회수될 수 있습니다. MySQL, Redis(EBS 볼륨은 한 AZ에 묶임)가 다른 AZ로 옮겨 가면 뜨지 못하므로 <code>db</code> 노드 그룹은 반드시 On-Demand, Spot을 쓴다면 <code>app</code>만. VPC CNI의 <b>prefix delegation</b>을 켜면 노드당 파드 수 제한도 크게 늘어납니다.</div>
 
 <h3>(선택) 작업용 우분투 EC2를 만든다면</h3>
-<p>필수가 아닙니다. 각자 WSL에서 kubectl, terraform을 쓸 수 있으면 만들지 않습니다. 만든다면 위 인프라 도면의 <b>퍼블릭 서브넷(2c)의 t3.small</b>이고, <code>app/</code>에서 상시 자원으로 만듭니다.</p>
+<p>필수가 아닙니다. 각자 WSL에서 kubectl, terraform을 쓸 수 있으면 만들지 않습니다. 만든다면 위 인프라 도면의 <b>퍼블릭 서브넷(2a)의 t3.small</b>이고, <code>app/</code>에서 상시 자원으로 만듭니다.</p>
 <ul>
 <li>보안 그룹에 <b>인바운드 규칙을 두지 않습니다(22번 닫힘)</b>. 접속은 <b>SSM Session Manager만</b> — 인스턴스 프로파일에 <code>AmazonSSMManagedInstanceCore</code>, 각자 PC에서 <code>aws ssm start-session --target i-...</code>(MobaXterm은 세션 매니저 플러그인으로 터널링). 키 페어(.pem)를 만들거나 나눌 일이 없습니다.</li>
 <li>설치: AWS CLI v2, kubectl 1.35, Helm, Terraform, Docker, JDK 21. 학습 가이드 02장 명령을 그대로 사용.</li>
@@ -870,7 +872,7 @@ data "aws_iam_roles" "github_actions" {
 <!-- ============================================================ 05 서빙 도메인 -->
 <section id="s-domain">
 <h2><span class="n">05</span>서빙 도메인: Route 53, ACM, Vercel</h2>
-<p class="lead">프론트는 Vercel, API는 Route 53에서 등록한 도메인 <code>api.gotgan.click</code>이 NLB 고정 IP(EIP)를 가리키고, NLB가 ACM 인증서로 HTTPS(443)를 받습니다. 외부에 열리는 것은 게이트웨이의 <code>/api/*</code>뿐입니다. (10/20 DuckDNS, HTTP 80에서 전환)</p>
+<p class="lead">프론트는 Vercel, API는 Route 53에서 등록한 도메인 <code>api.gotgan.click</code>이 NLB 고정 IP(EIP)를 가리키고, NLB가 ACM 인증서로 HTTPS(443)를 받습니다. 외부에 열리는 것은 게이트웨이뿐이고, 경로는 <code>/api/*</code>, 소셜 로그인용 Keycloak 경로, 채팅 WebSocket <code>/ws/chat</code>입니다. (10/20 DuckDNS, HTTP 80에서 전환)</p>
 <div class="tbl"><table>
 <tr><th>대상</th><th>서빙</th><th>주소 예</th><th>HTTPS</th></tr>
 <tr><td>프론트 (React)</td><td><b>Vercel</b> (GitHub 연동 자동 배포)</td><td><code>https://gotgan-ashy.vercel.app</code></td><td>Vercel이 자동 제공</td></tr>
@@ -892,6 +894,7 @@ data "aws_iam_roles" "github_actions" {
 <li>포트원 웹훅 주소도 <code>https://gotgan-ashy.vercel.app/api/payments/webhook</code>으로 HTTPS 주소를 줄 수 있음(07장)</li>
 <li>로그인, 가입도 우리 React 화면 → <code>/api/auth/**</code> → user-service가 Keycloak을 클러스터 안에서 대신 호출합니다. <b>Keycloak 경로는 Vercel 이 rewrite하지 않습니다.</b> 소셜 로그인 화면만 gateway 라우트 <code>/realms/gotgan/**</code>, <code>/resources/**</code>로 <code>https://api.gotgan.click</code> 에서 직접 열리고(관리 콘솔, master realm 은 비공개), 나머지 Keycloak 경로는 외부에 노출하지 않습니다.</li>
 <li>Vercel ↔ AWS 구간도 HTTPS로 <b>암호화</b>됩니다(이전 DuckDNS 구성의 HTTP 평문 구간 해소).</li>
+<li>예외 두 가지는 <code>https://api.gotgan.click</code>에 직접 연결합니다(10/27): 실시간 알림 SSE <code>/api/notifications/stream</code>(Vercel rewrite가 장시간 스트리밍에 맞지 않음), 채팅 WebSocket <code>wss://api.gotgan.click/ws/chat</code>(Vercel이 WebSocket을 중계하지 않음). 게이트웨이는 이 두 경로만 프론트 출처(운영, Vercel 미리보기, 로컬)를 CORS, Origin으로 허용합니다.</li>
 </ul>
 
 <h3>EIP를 쓰는 이유 — A 레코드 대상 고정</h3>

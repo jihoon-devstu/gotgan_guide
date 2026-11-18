@@ -15,7 +15,7 @@ export default function ThemeToggle() {
   };
 
   return (
-    <button type="button" className="theme-btn" onClick={handleClick} aria-label="밝은 · 어두운 테마 전환">
+    <button type="button" className="theme-btn" onClick={handleClick} aria-label="밝은, 어두운 테마 전환">
       테마
     </button>
   );

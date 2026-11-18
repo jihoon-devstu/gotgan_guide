@@ -33,7 +33,7 @@ for (const t of targets) {
       const tail = cg.filter(([g]) => keep.has(g)).map(([, x]) => x).join('');
       return (pre + tail).replace(/\n*$/, '\n\n');
     }
-    // 절 끝의 구분선 · 빈 줄은 발췌본 모양 그대로
+    // 절 끝의 구분선, 빈 줄은 발췌본 모양 그대로
     if (c) return c.replace(SEP, '') + (b.match(SEP)?.[0] ?? '\n');
     const { head: h3head, parts: subs } = split(b, 3);
     return h3head + subs.map((x) => (canonH3[title(x)] ? canonH3[title(x)].replace(SEP, '') + (x.match(SEP)?.[0] ?? '\n') : x)).join('');

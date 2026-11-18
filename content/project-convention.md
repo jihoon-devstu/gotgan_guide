@@ -161,7 +161,7 @@ com.sesac.gojigi.{service}            # service = gateway, user, store, product,
 | payment-service | paymentdb | `payment`(포트원 V2 검증, 취소, 웹훅) |
 | review-service | reviewdb | `review`(사진, 별점, 판매자 답글), `inquiry`(상품문의, 답변), `eligibility`(리뷰 작성 자격) |
 | settlement-service | settlementdb | `settlement`(적재, 집계, 지급, 보류), `commission`(카테고리별 수수료) |
-| admin-service | admindb(신고, 장애 시연 기록만) | `application`, `store`, `category`, `product`(상품 조회, 강제 판매중지), `settlement`, `user`, `dashboard`, `review` — `/internal/**` 호출 조합, `report`(신고, 조치 이력, 10/26), `notification`(알림 센터 — SQS 3큐, 알림함, SSE, 10/27), `system`(F-1 장애 시연 — 파드 상태, 내리기, 타임라인, 11/7) |
+| admin-service | admindb(신고, 장애 시연 기록만) | `application`, `store`, `category`, `product`(상품 조회, 강제 판매중지), `settlement`, `user`, `dashboard`, `review` — `/internal/**` 호출 조합, `report`(신고, 조치 이력, 10/26), `notification`(알림 센터 — SQS 3큐, 알림함, SSE, 10/27), `system`(F-1 장애 시연 — 파드 상태, 내리기, 타임라인, 11/7, 부하테스트, 실시간 모니터링 11/16, 장애 분석 리포트, 현재 접속자 11/17) |
 | chat-service (10/27) | chatdb | `room`(방, 메시지, 읽음 — 스토어 톡, 판매자 운영 상담, 고객센터 상담), `realtime`(STOMP, Redis 중계, 접속 중, 입력 중, 속도 제한), `directory`(이름 조회 — user, store, settlement `/internal/**`, product 공개 상세), `retention`(90일 뒤 삭제) |
 
 **도메인 경계 기준**
@@ -242,6 +242,7 @@ com.sesac.gojigi.{service}            # service = gateway, user, store, product,
 | `chat:presence:{roomId}` | chat | 접속 중 표시 ZSET — 점수 = 만료 시각(20초마다 연장, 60초 TTL), 보고 있는 쪽엔 알림을 보내지 않음 (10/27) |
 | `gotgan:active:visitors` | gateway, admin | 현재 접속자 ZSET — 멤버 = 방문자 ID `v:{X-Gotgan-Visitor}`(없으면 `ip:…`), 점수 = 마지막 요청 시각(초). admin 이 읽을 때 60초 지난 항목을 지우고 센다 (11/17) |
 | `gotgan:active:members` | gateway, admin | 로그인 회원 ZSET — 멤버 = `u:{userId}`, 로그아웃하면 바로 삭제 (11/17) |
+| `gotgan:active:role:{역할}` | gateway, admin | 역할별 로그인 회원 ZSET(`ADMIN`, `SELLER`, `BUYER`) — 역할이 여럿이면 관리자 > 판매자 > 구매자 하나로만 셈 (11/17) |
 | `notify:{받는 쪽}` | admin | 알림 센터 실시간 Pub/Sub 채널(`USER#{id}`, `STORE#{id}`, `ADMIN`) — 모든 파드가 자기 SSE 연결에 전달 (10/27) |
 | `request_rate_limiter.*` | gateway | 요청 제한 토큰 버킷 — Spring Cloud Gateway `RedisRateLimiter` 기본 키, 식별자는 `RateLimitKeyResolver`의 `user:{userId}`, `ip:{ip}`, `direct`, 라우트마다 따로 셈. Redis 장애면 통과(fail-open) |
 
@@ -770,6 +771,7 @@ gotgan-frontend/src/
 │   ├── RootLayout.jsx            #   최상위 틀 (ToastHost 등)
 │   ├── providers.jsx             #   QueryClientProvider 등
 │   ├── bootstrap.js              #   부팅 시 refresh 1회 → 로그인 상태 복구
+│   ├── usePresence.js            #   접속 신호 — 20초마다 /api/presence/ping, 나갈 때 leave (현재 접속자, 11/17)
 │   └── App.jsx
 ├── pages/                        # 라우트 1개 = 페이지 파일 1개. features 조립만
 │   ├── shop/                     #   메인, 상품, 스토어, 장바구니, 주문서, 로그인, 입점 신청, 고객센터, 정책(공지, FAQ, 수수료, 판매자 약관)
@@ -799,7 +801,7 @@ gotgan-frontend/src/
 │   ├── components/ui/            #   목업 공통 컴포넌트 (Pill, Price, Modal, Kpi, BarChart …)
 │   ├── components/common/        #   PostcodeSearch(우편번호 검색), DataTable, SearchInput, BlockPager, SortableHeader, MockNav(개발 모드 전용)
 │   ├── layouts/                  #   ShopLayout, MyPageLayout, ConsoleLayout
-│   ├── hooks/  stores/  utils/   #   utils: format, safeHtml(DOMPurify), fileType(업로드 형식 확인), postcode, imageFallback, collection
+│   ├── hooks/  stores/  utils/   #   utils: format, safeHtml(DOMPurify), fileType(업로드 형식 확인), postcode, imageFallback, collection, visitorId(방문자 ID, 11/17)
 ├── test/setup.js                 # Vitest 공통 설정
 └── styles/index.css              # Tailwind 진입, @theme 디자인 토큰
 ```
@@ -1033,7 +1035,7 @@ function StoreList() {
 - Helm `values.yaml` 키는 camelCase, 서비스 키는 서비스 이름 (`services.order-service.tag`)
 - Secret 이름: `mysql-secret`, `{service}-secret`, `keycloak-secret`, `grafana-secret`, `alert-webhook-secret`, `loadtest-secret`(관리자 화면 부하테스트, 11/16) — 파일로 커밋하지 않고 `secrets-sync` 워크플로가 생성. 서비스는 `envFrom.secretRef`로만 읽음
 - Redis는 AOF(`appendonly yes`) + PVC(`ebs-sc` 1Gi) — EBS 볼륨(gp3 디스크), ElastiCache 아님
-- 노드 그룹(3티어, 10/13 3차, 10/14 사이징 조정): `app`(t3.xlarge ×2, 라벨 `tier=app`), `db`(t3.medium ×1, 2a 고정, 라벨 + 테인트 `tier=db:NoSchedule`). 노드 라벨 값은 `app`, `db` 둘뿐
+- 노드 그룹(3티어, 10/13 3차, 10/14 사이징 조정): `app`(t3.xlarge ×2, 11/17부터 Cluster Autoscaler가 2~3대, 라벨 `tier=app`), `db`(t3.medium ×1, 2a 고정, 라벨 + 테인트 `tier=db:NoSchedule`). 노드 라벨 값은 `app`, `db` 둘뿐
 - 파드 배치: 업무 서비스, gateway, Keycloak, 관측성, ArgoCD는 `nodeSelector: { tier: app }`(Helm `deployment.yaml` 기본). MySQL, Redis만 `nodeSelector: { tier: db }` + `tolerations: [{ key: tier, value: db, effect: NoSchedule }]`
 - 파드 라벨 `tier`: DB에 접속하는 파드(업무 서비스, Keycloak, 디버그용 mysql 클라이언트)는 `tier: backend`, MySQL, Redis는 `tier: db`. `app:` 라벨과 별개로 둘 다 붙인다
 - NetworkPolicy(`deploy/k8s/02-networkpolicy.yaml`, bootstrap이 configmap 직후 적용): `tier=db` 파드의 3306, 6379 ingress는 네임스페이스 `sesac-gojigi`의 `tier=backend` 파드만, `tier=db` 파드 egress는 kube-dns 53뿐. 정책 이름은 `db-ingress-from-backend`, `db-egress-deny-except-dns`. 다른 네임스페이스(monitoring 등)에서 DB에 직접 붙지 않는다. 업무 티어(11/5): `tier=backend` 는 같은 티어, `monitoring` 에서만(`backend-ingress-from-backend-monitoring`), gateway 8080 은 어디서나(`gateway-ingress-from-nlb`)
